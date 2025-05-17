@@ -1,0 +1,5 @@
+pydantic_ai
+python-dotenv
+bitfinex-api-py
+beautifulsoup4
+git+https://github.com/stanfordio/truthbrush.git
