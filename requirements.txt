@@ -1,5 +1,7 @@
 pydantic_ai
-python-dotenv
+python-dotenv~=1.1.0
 bitfinex-api-py
-beautifulsoup4
+beautifulsoup4~=4.13.4
 git+https://github.com/stanfordio/truthbrush.git
+pydantic~=2.11.4
+rich~=14.0.0

@@ -1,5 +1,5 @@
 # aSentrX
-
+https://github.com/stanfordio/truthbrush/blob/main/README.md
 aSentrX is a collection of Python scripts designed for fetching, storing, and parsing social media statuses, primarily from Truth Social using the `truthbrush` library. It also includes a separate module for interacting with the Bitfinex API.
 
 ## Main Features
