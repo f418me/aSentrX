@@ -12,6 +12,7 @@ bfx = Client(
 )
 
 print(bfx.rest.auth.get_wallets())
+print(bfx.rest.auth.get_positions())
 
 
 
