@@ -5,3 +5,5 @@ beautifulsoup4~=4.13.4
 git+https://github.com/stanfordio/truthbrush.git
 pydantic~=2.11.4
 rich~=14.0.0
+logfire~=3.16.0
+twilio~=9.6.1
