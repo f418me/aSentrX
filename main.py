@@ -3,8 +3,8 @@ import signal
 import threading
 import logging
 from dotenv import load_dotenv
-from utils.logger_config import configure_logging, APP_LOGGER_NAME # Import configuration and base logger name
-from socialmedia.truesocial import TrueSocial # <-- NEUER IMPORT
+from utils.logger_config import configure_logging, APP_LOGGER_NAME
+from socialmedia.truesocial import TrueSocial
 
 load_dotenv()
 
@@ -61,3 +61,4 @@ if __name__ == "__main__":
     )
 
     logger.info(f"aSentrX application ({APP_LOGGER_NAME}) has shut down.")
+

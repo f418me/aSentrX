@@ -9,7 +9,7 @@ from utils.logger_config import configure_logging, APP_LOGGER_NAME
 
 logger = logging.getLogger(f"{APP_LOGGER_NAME}.asentrx_agent")
 
-logger.info("aSentrX Agent script (module) loaded or started.")
+logger.debug("aSentrX Agent script (module) loaded or started.")
 
 class FirstClassification(BaseModel):
     classification: str
@@ -34,7 +34,7 @@ class Failed(BaseModel):
 
 load_dotenv()
 
-logger.info("Initializing FirstClassificationAgent...")
+logger.debug("Initializing FirstClassificationAgent...")
 first_classification_agent = Agent[None, Union[FirstClassification, Failed]](
     os.getenv("MODEL", "groq:llama-3.3-70b-versatile"),
     output_type=Union[FirstClassification, Failed],  # type: ignore
@@ -47,9 +47,9 @@ first_classification_agent = Agent[None, Union[FirstClassification, Failed]](
         'and a brief `reasoning` for your classification.' # UPDATED
     ),
 )
-logger.info("FirstClassificationAgent initialized.")
+logger.debug("FirstClassificationAgent initialized.")
 
-
+#todo just an example - remove if not needed
 @first_classification_agent.tool
 async def provide_context_for_first_classification(ctx: RunContext[str]) -> str:
     logger.debug(f"Tool 'provide_context_for_first_classification' called with deps: {ctx.deps}")
@@ -66,7 +66,7 @@ bitcoin_classification_agent = Agent[None, Union[BitcoinClassification, Failed]]
         '(a float between 0.0 and 1.0), and a brief `reasoning` for your assessment.' # UPDATED
     ),
 )
-logger.info("BitcoinClassificationAgent initialized.")
+logger.debug("BitcoinClassificationAgent initialized.")
 
 # Agent 3: Bitcoin Price Direction Prediction
 logger.info("Initializing BitcoinPriceDirectionAgent...")
@@ -81,7 +81,7 @@ bitcoin_price_direction_agent = Agent[None, Union[BitcoinPriceDirection, Failed]
         '3. Provide a brief `reasoning` for your prediction.' # Already existed
     ),
 )
-logger.info("BitcoinPriceDirectionAgent initialized.")
+logger.debug("BitcoinPriceDirectionAgent initialized.")
 
 
 class ContentAnalyzer:
@@ -95,9 +95,13 @@ class ContentAnalyzer:
         Logs the status_id with each major step for better traceability.
         """
         logger.info(f"Status ID [{status_id_for_logging}]: Starting agent pipeline for content analysis.")
+        #logfire.span(f"Status ID [{status_id_for_logging}]: Starting agent pipeline for content analysis.")
+
         try:
             # --- Step 1: First Classification ---
             logger.info(f"Status ID [{status_id_for_logging}]: Running first classification (market/private/others)...")
+            #logfire.info(f"Status ID [{status_id_for_logging}]: Running first classification (market/private/others)...")
+
             result_first_classification = first_classification_agent.run_sync(content, deps="General Knowledge")
 
             if isinstance(result_first_classification.output, Failed):
@@ -132,9 +136,10 @@ class ContentAnalyzer:
                         # --- Step 3: Bitcoin Price Direction (only if impact is True) ---
                         if result_bitcoin_classification.output.bitcoin_impact is True:
                             logger.info(
-                                f"Status ID [{status_id_for_logging}]: Tweet assessed to have Bitcoin impact. Proceeding to Bitcoin price direction prediction.")
+                                f"Status ID [{status_id_for_logging}]: Content assessed to have Bitcoin impact. Proceeding to Bitcoin price direction prediction.")
 
                             logger.info(f"Status ID [{status_id_for_logging}]: Running Bitcoin price direction prediction...")
+
                             result_price_direction = bitcoin_price_direction_agent.run_sync(content)
 
                             if isinstance(result_price_direction.output, Failed):
@@ -147,6 +152,7 @@ class ContentAnalyzer:
                                     f"Confidence={result_price_direction.output.confidence:.2f}, "
                                     f"Reasoning='{result_price_direction.output.reasoning}'" # Already logged reasoning
                                 )
+
                             else:
                                 logger.error(
                                     f"Status ID [{status_id_for_logging}]: Bitcoin price direction agent returned an unexpected Pydantic model type: {type(result_price_direction.output)}")
