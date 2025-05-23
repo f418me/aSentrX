@@ -1,6 +1,6 @@
-# utils/logger_config.py
 import logging
 import os
+import logfire
 
 # These are read when the module is imported, but configure_logging() applies them.
 LOG_FILE_NAME_ENV = os.getenv("LOG_FILE_NAME", "asentrx_default.log")
@@ -110,6 +110,10 @@ def configure_logging():
         ch.setLevel(console_log_level_num) # Set the level for this specific handler.
         ch.setFormatter(formatter)
         app_base_logger.addHandler(ch)
+
+        # --- Logfire  Setup ---
+        logfire.configure(token=os.getenv("LOGFIRE_TOKEN"),environment=os.getenv("LOGFIRE_ENVIRONMENT", "local"))
+        logfire.instrument_pydantic_ai()
 
     _logging_configured = True
 
