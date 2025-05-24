@@ -111,9 +111,9 @@ def configure_logging():
         ch.setFormatter(formatter)
         app_base_logger.addHandler(ch)
 
-        # --- Logfire  Setup ---
-        logfire.configure(token=os.getenv("LOGFIRE_TOKEN"),environment=os.getenv("LOGFIRE_ENVIRONMENT", "local"))
-        logfire.instrument_pydantic_ai()
+    # --- Logfire  Setup ---
+    logfire.configure(token=os.getenv("LOGFIRE_TOKEN"),environment=os.getenv("LOGFIRE_ENVIRONMENT", "local"))
+    logfire.instrument_pydantic_ai()
 
     _logging_configured = True
 
