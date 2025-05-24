@@ -9,6 +9,9 @@ WORKDIR /app
 
 # Copy requirements first to leverage Docker cache
 COPY requirements.txt ./
+# Temp fix for bitfinex
+RUN pip install requests
+
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Stage 2: Final stage
