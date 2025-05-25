@@ -34,12 +34,7 @@ def main():
         print("[-] No statuses found.")
         return
 
-    #print(f"[*] Found {len(statuses)} status(es).")
-
     # --- Write raw statuses to file ---
-    # Each status object (which is a Python dictionary from the API)
-    # will be converted to its string representation and written on a new line.
-    # This file will contain one string-formatted Python dictionary per line.
     try:
         with open(OUTPUT_FILENAME_RAW_STATUSES, 'w', encoding='utf-8') as f_raw:
             for status in statuses:
