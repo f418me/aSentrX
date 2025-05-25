@@ -1,5 +1,8 @@
 import logging
+import os
 import threading
+
+import logfire
 from truthbrush import Api
 from utils import StatusParser
 from ai.asentrx_agent import ContentAnalyzer
@@ -73,7 +76,60 @@ class TrueSocial:
 
                 if content_cleaned and content_cleaned.strip():
                     content_analyzer = ContentAnalyzer()
-                    content_analyzer.analyze_content(content_cleaned)
+                    analysis_result = content_analyzer.analyze_content(content_cleaned, status_id)
+                    logger.info(
+                        f"Analysis Result: Direction='{analysis_result.direction}', Confidence={analysis_result.confidence}")
+
+                    # Zuerst prüfen, ob überhaupt Ergebnisse vom dritten Agenten vorliegen
+                    if analysis_result.direction is not None and analysis_result.confidence is not None:
+                        # Normalisieren der Richtung auf Kleinbuchstaben für einen robusten Vergleich
+                        direction_lower = analysis_result.direction.lower()
+
+                        if direction_lower == "up":
+                            if analysis_result.confidence >= 0.9:
+                                logfire.info(
+                                    f"ACTION TRIGGERED: Bitcoin price LIKELY TO GO UP significantly (Confidence >= 0.9).")
+
+                                logger.info(
+                                    f"ACTION TRIGGERED: Bitcoin price LIKELY TO GO UP significantly (Confidence >= 0.9).")
+                                # todo excute order
+                                if os.getenv("PROD_EXECUTION","False") == "True":
+                                    print("execute")
+                                # Beispiel:
+                                # execute_high_confidence_up_action(tweet_content, analysis_result)
+                                logger.info("   -> Initiating 'High Confidence UP' protocol...")
+                            elif analysis_result.confidence >= 0.8:  # Wird nur geprüft, wenn nicht >= 0.9
+                                logfire.info(
+                                    f"ACTION TRIGGERED: Bitcoin price LIKELY TO GO UP (Confidence >= 0.8 and < 0.9).")
+
+                                logger.info(f"ACTION TRIGGERED: Bitcoin price LIKELY TO GO UP (Confidence >= 0.8 and < 0.9).")
+                                # --- Führen Sie hier Ihre spezifische Aktion für >= 0.8 (aber < 0.9) aus ---
+                                # Beispiel:
+                                if os.getenv("PROD_EXECUTION", "False") == "True":
+                                    print("execute")
+                                # execute_medium_confidence_up_action(tweet_content, analysis_result)
+                                logger.info("   -> Initiating 'Medium Confidence UP' protocol...")
+                            else:
+                                logger.info(
+                                    f"INFO: Bitcoin price predicted 'up', but confidence ({analysis_result.confidence:.2f}) is below 0.8.")
+                        elif direction_lower == "down":
+                            logger.info(
+                                f"INFO: Bitcoin price predicted 'down' with confidence {analysis_result.confidence:.2f}.")
+                            # Hier könnten Sie ähnliche Logik für "down" implementieren
+                        elif direction_lower == "neutral":
+                            logger.info(
+                                f"INFO: Bitcoin price predicted 'neutral' with confidence {analysis_result.confidence:.2f}.")
+                        else:
+                            logger.info(f"WARNING: Unknown direction '{analysis_result.direction}' received.")
+                    else:
+                        logger.info(
+                            "INFO: No Bitcoin price direction prediction was made (e.g., tweet not market-related or no Bitcoin impact).")
+                        if analysis_result.direction is None:
+                            logger.info("   Reason: Direction is None.")
+                        if analysis_result.confidence is None:
+                            logger.info("   Reason: Confidence is None.")
+                    ##todo refactoring need here is not the right place to make an order.
+
                     logger.debug(
                         f"AI agent invocation for status ID {status_id}.")
                 else:

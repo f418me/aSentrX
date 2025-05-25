@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Union
+from typing import Union, Optional  # Added Optional
 
 from dotenv import load_dotenv
 from pydantic import BaseModel
@@ -11,9 +11,11 @@ logger = logging.getLogger(f"{APP_LOGGER_NAME}.asentrx_agent")
 
 logger.debug("aSentrX Agent script (module) loaded or started.")
 
+
 class FirstClassification(BaseModel):
     classification: str
     confidence: float
+    price_direction: str
     reasoning: str
 
 
@@ -29,8 +31,22 @@ class BitcoinPriceDirection(BaseModel):
     confidence: float
     reasoning: str
 
+
 class Failed(BaseModel):
     """Unable to find a satisfactory choice for the current task."""
+
+
+class ThirdAgentPipelineOutput(BaseModel):
+    """
+    Represents the output related to the third agent (Bitcoin Price Direction)
+    from the ContentAnalyzer pipeline. Fields will be None if the third agent
+    was not executed or did not produce a valid result.
+    """
+    direction: Optional[str] = None
+    confidence: Optional[float] = None
+    topic_class: Optional[str] = None
+    reasoning: Optional[str] = None
+
 
 load_dotenv()
 
@@ -39,20 +55,23 @@ first_classification_agent = Agent[None, Union[FirstClassification, Failed]](
     os.getenv("MODEL", "groq:llama-3.3-70b-versatile"),
     output_type=Union[FirstClassification, Failed],  # type: ignore
     system_prompt=(
-        'Decide if this tweet from the President of the USA is from the class market, private or others. '
+        'Decide if this tweet from the President of the USA is from the class market, private, special_class_tarif or others. If USA higher tarifs for other nations or comapnys or decite to bring new duty in place price_direction is down. If the lower tarifs/duty price direction is up.'
         'market: everything related to financial markets. '
         'private: everything related to private persons. '
+        'special_class_tarif: everything related to import tarifs for other nations and companys.'
         'others: everything else. '
         'Provide the classification, the confidence level (a float between 0.0 and 1.0), '
-        'and a brief `reasoning` for your classification.' # UPDATED
+        'and a brief `reasoning` for your classification.'
+        'Provide price_direction up or down, if the content is related to tarifs'
     ),
 )
 
-#todo just an example - remove if not needed
+
 @first_classification_agent.tool
 async def provide_context_for_first_classification(ctx: RunContext[str]) -> str:
     logger.debug(f"Tool 'provide_context_for_first_classification' called with deps: {ctx.deps}")
-    return f"Context: {ctx.deps}"
+    return f"Context: {os.getenv("SPECIAL_CONTEXT")}"
+
 
 # Agent 2: Bitcoin relevant
 bitcoin_classification_agent = Agent[None, Union[BitcoinClassification, Failed]](
@@ -61,7 +80,7 @@ bitcoin_classification_agent = Agent[None, Union[BitcoinClassification, Failed]]
     system_prompt=(
         'Based on this tweet from the President of the USA, decide if it could have an impact on the Bitcoin price. '
         'Provide a boolean for `bitcoin_impact` (True or False), a `confidence` level for your assessment '
-        '(a float between 0.0 and 1.0), and a brief `reasoning` for your assessment.' # UPDATED
+        '(a float between 0.0 and 1.0), and a brief `reasoning` for your assessment.'  # UPDATED
     ),
 )
 
@@ -74,20 +93,27 @@ bitcoin_price_direction_agent = Agent[None, Union[BitcoinPriceDirection, Failed]
         '1. Predict whether the Bitcoin price is more likely to go "up", "down", or remain "neutral" as a result of this tweet. '
         '   Set this prediction to the `direction` field. '
         '2. Provide a `confidence` level for your prediction (a float between 0.0 and 1.0). '
-        '3. Provide a brief `reasoning` for your prediction.' # Already existed
+        '3. Provide a brief `reasoning` for your prediction.'  # Already existed
     ),
 )
+
 
 class ContentAnalyzer:
     def __init__(self):
         logger.info("Initializing ContentAnalyzer...")
 
-    def analyze_content(self, content: str, status_id_for_logging: str = "N/A"):
+    def analyze_content(self, content: str, status_id_for_logging: str = "N/A") -> ThirdAgentPipelineOutput:
         """
         Analyzes the given content using a pipeline of AI agents.
         Logs the status_id with each major step for better traceability.
+        Returns a ThirdAgentPipelineOutput object containing results from the
+        third agent (BitcoinPriceDirection). If the third agent is not executed,
+        the fields in the returned object (direction, confidence, reasoning) will be None.
         """
         logger.info(f"Status ID [{status_id_for_logging}]: Starting agent pipeline for content analysis.")
+
+        # Initialize the object to be returned, with default None values
+        pipeline_final_output = ThirdAgentPipelineOutput()
 
         try:
             # --- Step 1: First Classification ---
@@ -101,13 +127,28 @@ class ContentAnalyzer:
                 logger.info(
                     f"Status ID [{status_id_for_logging}]: First classification result: "
                     f"Classification='{result_first_classification.output.classification}', "
+                    f"Price_direction='{result_first_classification.output.price_direction}', "
                     f"Confidence={result_first_classification.output.confidence:.2f}, "
-                    f"Reasoning='{result_first_classification.output.reasoning}'" # UPDATED LOGGING
+                    f"Reasoning='{result_first_classification.output.reasoning}'"  # UPDATED LOGGING
                 )
+
+                #Special case Tarifs
+                if result_first_classification.output.classification == "special_class_tarif":
+                    logger.info(
+                        f"Status ID [{status_id_for_logging}]: First classification is 'special_class_tarif'.")
+
+                    logger.info(f"Status ID [{status_id_for_logging}]: Running Bitcoin impact classification...")
+                    # Populate the return object with results from the first agent
+                    pipeline_final_output.direction = result_first_classification.output.price_direction
+                    pipeline_final_output.confidence = result_first_classification.output.confidence
+                    pipeline_final_output.topic_class = 'TARIF'
+                    pipeline_final_output.reasoning = result_first_classification.output.reasoning
+
 
                 # --- Step 2: Bitcoin Impact (only if first classification is 'market') ---
                 if result_first_classification.output.classification == "market":
-                    logger.info(f"Status ID [{status_id_for_logging}]: First classification is 'market'. Proceeding to Bitcoin impact classification.")
+                    logger.info(
+                        f"Status ID [{status_id_for_logging}]: First classification is 'market'. Proceeding to Bitcoin impact classification.")
 
                     logger.info(f"Status ID [{status_id_for_logging}]: Running Bitcoin impact classification...")
                     result_bitcoin_classification = bitcoin_classification_agent.run_sync(content)
@@ -120,7 +161,7 @@ class ContentAnalyzer:
                             f"Status ID [{status_id_for_logging}]: Bitcoin impact classification result: "
                             f"Bitcoin Impact='{result_bitcoin_classification.output.bitcoin_impact}', "
                             f"Confidence={result_bitcoin_classification.output.confidence:.2f}, "
-                            f"Reasoning='{result_bitcoin_classification.output.reasoning}'" # UPDATED LOGGING
+                            f"Reasoning='{result_bitcoin_classification.output.reasoning}'"  # UPDATED LOGGING
                         )
 
                         # --- Step 3: Bitcoin Price Direction (only if impact is True) ---
@@ -128,7 +169,8 @@ class ContentAnalyzer:
                             logger.info(
                                 f"Status ID [{status_id_for_logging}]: Content assessed to have Bitcoin impact. Proceeding to Bitcoin price direction prediction.")
 
-                            logger.info(f"Status ID [{status_id_for_logging}]: Running Bitcoin price direction prediction...")
+                            logger.info(
+                                f"Status ID [{status_id_for_logging}]: Running Bitcoin price direction prediction...")
 
                             result_price_direction = bitcoin_price_direction_agent.run_sync(content)
 
@@ -140,9 +182,13 @@ class ContentAnalyzer:
                                     f"Status ID [{status_id_for_logging}]: Bitcoin price direction prediction: "
                                     f"Direction='{result_price_direction.output.direction}', "
                                     f"Confidence={result_price_direction.output.confidence:.2f}, "
-                                    f"Reasoning='{result_price_direction.output.reasoning}'" # Already logged reasoning
+                                    f"Reasoning='{result_price_direction.output.reasoning}'"  # Already logged reasoning
                                 )
-
+                                # Populate the return object with results from the third agent
+                                pipeline_final_output.direction = result_price_direction.output.direction
+                                pipeline_final_output.confidence = result_price_direction.output.confidence
+                                pipeline_final_output.topic_class = 'BTC'
+                                pipeline_final_output.reasoning = result_price_direction.output.reasoning
                             else:
                                 logger.error(
                                     f"Status ID [{status_id_for_logging}]: Bitcoin price direction agent returned an unexpected Pydantic model type: {type(result_price_direction.output)}")
@@ -160,5 +206,10 @@ class ContentAnalyzer:
                     f"Status ID [{status_id_for_logging}]: First classification agent returned an unexpected Pydantic model type: {type(result_first_classification.output)}")
 
         except Exception as e:
-            logger.error(f"Status ID [{status_id_for_logging}]: An unexpected error occurred during agent processing: {e}", exc_info=True)
+            logger.error(
+                f"Status ID [{status_id_for_logging}]: An unexpected error occurred during agent processing: {e}",
+                exc_info=True)
+            # In case of a major error, pipeline_final_output will still be returned, 
+            # containing None for its fields as initialized.
 
+        return pipeline_final_output

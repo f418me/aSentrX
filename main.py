@@ -2,6 +2,8 @@ import os
 import signal
 import threading
 import logging
+
+import logfire
 from dotenv import load_dotenv
 from utils.logger_config import configure_logging, APP_LOGGER_NAME
 from socialmedia.truesocial import TrueSocial
@@ -48,6 +50,7 @@ if __name__ == "__main__":
     signal.signal(signal.SIGTERM, signal_handler)
 
     logger.info(f"aSentrX application ({APP_LOGGER_NAME}) is starting up...")
+    logfire.info(f"aSentrX application ({APP_LOGGER_NAME}) is starting up...")
 
     app = TrueSocial(
         username=TARGET_USERNAME,

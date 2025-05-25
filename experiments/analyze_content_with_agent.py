@@ -7,6 +7,8 @@ except ValueError: # Handle potential issue if already configured by another ent
     pass
 
 
-content_cleaned = "We will sell all our gold and buy bitcoin instead."
+#content_cleaned = "We will sell all our gold and buy bitcoin instead."
+content_cleaned = "The EU will have to pay 50% import tarfis from now."
 content_analyzer = ContentAnalyzer()
-content_analyzer.analyze_content(content_cleaned)
+result = content_analyzer.analyze_content(content_cleaned)
+print(result)
