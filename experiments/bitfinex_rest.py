@@ -13,9 +13,11 @@ bfx = Client(
 #print(bfx.rest.auth.get_wallets())
 #print(bfx.rest.auth.get_positions())
 
-# Attention excutes order
+# Attention executes order
 #print(bfx.rest.auth.submit_order(type="LIMIT", symbol="tBTCF0:USTF0", amount="0.01", price="111600", lev=10))
 
+
+# not working
 #print(bfx.rest.public.get_derivatives_status("tBTCF0:USTF0,tETHF0:USTF0"))
 
 

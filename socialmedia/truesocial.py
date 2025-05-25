@@ -1,9 +1,9 @@
 import logging
-import threading # Für den Type Hint von shutdown_event
+import threading
 from truthbrush import Api
-from utils import StatusParser # Annahme: utils ist im Python-Pfad oder relativ erreichbar
+from utils import StatusParser
 from ai.asentrx_agent import ContentAnalyzer
-from utils.logger_config import APP_LOGGER_NAME # Importiere den Basis-Loggernamen
+from utils.logger_config import APP_LOGGER_NAME
 
 
 logger = logging.getLogger(f"{APP_LOGGER_NAME}.TrueSocial")
@@ -12,14 +12,14 @@ logger = logging.getLogger(f"{APP_LOGGER_NAME}.TrueSocial")
 class TrueSocial:
     """
     Main class for the TrueSocial application.
-    Handles fetching, parsing, and logging social media statuses periodically.
+    Handles fetching, parsing, and logging socialtrue  statuses periodically.
     """
     def __init__(self, username: str, fetch_interval_seconds: int, api_verbose_output: bool, initial_since_id: str | None = None):
         self.api = Api()
         self.username = username
         self.last_known_id = initial_since_id
         self.interval_seconds = fetch_interval_seconds
-        self.api_verbose_output = api_verbose_output # Store for use in fetch_and_process_statuses
+        self.api_verbose_output = api_verbose_output
 
         logger.info(f"ASentrX instance initialized for user: '{self.username}'. "
                            f"Initial since_id: {self.last_known_id or 'None'}.")
@@ -38,7 +38,7 @@ class TrueSocial:
             statuses_generator = self.api.pull_statuses(
                 username=self.username,
                 replies=False,
-                verbose=self.api_verbose_output, # Verwende die gespeicherte Variable
+                verbose=self.api_verbose_output,
                 since_id=self.last_known_id
             )
             statuses = list(statuses_generator)

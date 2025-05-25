@@ -5,7 +5,7 @@ from typing import Union
 from dotenv import load_dotenv
 from pydantic import BaseModel
 from pydantic_ai import Agent, RunContext
-from utils.logger_config import configure_logging, APP_LOGGER_NAME
+from utils.logger_config import APP_LOGGER_NAME
 
 logger = logging.getLogger(f"{APP_LOGGER_NAME}.asentrx_agent")
 
@@ -14,27 +14,27 @@ logger.debug("aSentrX Agent script (module) loaded or started.")
 class FirstClassification(BaseModel):
     classification: str
     confidence: float
-    reasoning: str  # ADDED: Reasoning for the classification
+    reasoning: str
 
 
 class BitcoinClassification(BaseModel):
     bitcoin_impact: bool
     confidence: float
-    reasoning: str  # ADDED: Reasoning for the Bitcoin impact assessment
+    reasoning: str
 
 
 class BitcoinPriceDirection(BaseModel):
     """Predicts the likely direction of Bitcoin price change based on a tweet."""
-    direction: str  # Expected: "up", "down", or "neutral"
+    direction: str
     confidence: float
-    reasoning: str  # Explanation for the predicted direction (already existed)
+    reasoning: str
 
 class Failed(BaseModel):
     """Unable to find a satisfactory choice for the current task."""
 
 load_dotenv()
 
-logger.debug("Initializing FirstClassificationAgent...")
+# Agent 1: Market impact
 first_classification_agent = Agent[None, Union[FirstClassification, Failed]](
     os.getenv("MODEL", "groq:llama-3.3-70b-versatile"),
     output_type=Union[FirstClassification, Failed],  # type: ignore
@@ -47,7 +47,6 @@ first_classification_agent = Agent[None, Union[FirstClassification, Failed]](
         'and a brief `reasoning` for your classification.' # UPDATED
     ),
 )
-logger.debug("FirstClassificationAgent initialized.")
 
 #todo just an example - remove if not needed
 @first_classification_agent.tool
@@ -55,21 +54,18 @@ async def provide_context_for_first_classification(ctx: RunContext[str]) -> str:
     logger.debug(f"Tool 'provide_context_for_first_classification' called with deps: {ctx.deps}")
     return f"Context: {ctx.deps}"
 
-
-logger.info("Initializing BitcoinClassificationAgent...")
+# Agent 2: Bitcoin relevant
 bitcoin_classification_agent = Agent[None, Union[BitcoinClassification, Failed]](
     os.getenv("MODEL", "groq:llama-3.3-70b-versatile"),
-    output_type=Union[BitcoinClassification, Failed],  # type: ignore
+    output_type=Union[BitcoinClassification, Failed],
     system_prompt=(
         'Based on this tweet from the President of the USA, decide if it could have an impact on the Bitcoin price. '
         'Provide a boolean for `bitcoin_impact` (True or False), a `confidence` level for your assessment '
         '(a float between 0.0 and 1.0), and a brief `reasoning` for your assessment.' # UPDATED
     ),
 )
-logger.debug("BitcoinClassificationAgent initialized.")
 
 # Agent 3: Bitcoin Price Direction Prediction
-logger.info("Initializing BitcoinPriceDirectionAgent...")
 bitcoin_price_direction_agent = Agent[None, Union[BitcoinPriceDirection, Failed]](
     os.getenv("MODEL", "groq:llama-3.3-70b-versatile"),
     output_type=Union[BitcoinPriceDirection, Failed],  # type: ignore
@@ -81,13 +77,10 @@ bitcoin_price_direction_agent = Agent[None, Union[BitcoinPriceDirection, Failed]
         '3. Provide a brief `reasoning` for your prediction.' # Already existed
     ),
 )
-logger.debug("BitcoinPriceDirectionAgent initialized.")
-
 
 class ContentAnalyzer:
     def __init__(self):
         logger.info("Initializing ContentAnalyzer...")
-        # Agent initialization is now at the module level, so they are ready when ContentAnalyzer is instantiated.
 
     def analyze_content(self, content: str, status_id_for_logging: str = "N/A"):
         """
@@ -95,13 +88,10 @@ class ContentAnalyzer:
         Logs the status_id with each major step for better traceability.
         """
         logger.info(f"Status ID [{status_id_for_logging}]: Starting agent pipeline for content analysis.")
-        #logfire.span(f"Status ID [{status_id_for_logging}]: Starting agent pipeline for content analysis.")
 
         try:
             # --- Step 1: First Classification ---
             logger.info(f"Status ID [{status_id_for_logging}]: Running first classification (market/private/others)...")
-            #logfire.info(f"Status ID [{status_id_for_logging}]: Running first classification (market/private/others)...")
-
             result_first_classification = first_classification_agent.run_sync(content, deps="General Knowledge")
 
             if isinstance(result_first_classification.output, Failed):

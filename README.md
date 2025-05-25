@@ -130,12 +130,12 @@ This is the easiest way to manage the service and its dependencies (like volumes
 
 3.  **View logs:**
     ```bash
-    docker-compose logs -f asentrx_app
+    sudo docker compose logs -f asentrx_app
     ```
 
 4.  **Stop the service:**
     ```bash
-    docker-compose down
+    sudo docker compose down
     ```
 
 #### Manually (without Docker)
