@@ -116,6 +116,7 @@ class BitfinexTrader:
     def get_derivative_status(self, symbol=None):
         """
         Fetches the status for a specific derivative symbol.
+        https://docs.bitfinex.com/reference/rest-public-derivatives-status
 
         Args:
             symbol (str, optional): The derivative symbol (e.g., "tBTCF0:USTF0").

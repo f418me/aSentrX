@@ -44,7 +44,7 @@ if __name__ == '__main__':
         print("Bitfinex client not initialized (API keys likely missing). Skipping live order execution.")
 
     # Example 2: Sell 0.01 BTC perpetual future (short)
-    order_amount_sell = -0.001
+    order_amount_sell = -0.0005
     # Set limit price 0.3% above current market price
     # If current is 100000, limit will be 100300. For a sell limit, this means you want to sell at 100300 or higher.
     limit_offset_sell = 0.003
