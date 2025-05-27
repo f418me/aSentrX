@@ -96,8 +96,7 @@ def configure_logging():
     fh.setFormatter(formatter)
     app_base_logger.addHandler(fh)
 
-    # --- Console Handler Setup (Optional) ---
-    console_log_level_num = None # To store the numeric level for the confirmation message
+    console_log_level_num = None
     if CONSOLE_LOGGING_ENABLED_ENV:
         try:
             console_log_level_num = get_numeric_loglevel(LOG_LEVEL_CONSOLE_STR_ENV)
@@ -106,8 +105,8 @@ def configure_logging():
                   f"Please check your .env file or environment variables.")
             raise
 
-        ch = logging.StreamHandler() # Defaults to sys.stderr
-        ch.setLevel(console_log_level_num) # Set the level for this specific handler.
+        ch = logging.StreamHandler()
+        ch.setLevel(console_log_level_num)
         ch.setFormatter(formatter)
         app_base_logger.addHandler(ch)
 
@@ -117,8 +116,7 @@ def configure_logging():
 
     _logging_configured = True
 
-    # --- Confirmation Log ---
-    # Use a child logger to log confirmation. This also tests that the hierarchy works.
+    # Use a child logger to log confirmation.
     config_logger = logging.getLogger(f"{APP_LOGGER_NAME}.config")
 
     console_status_msg = "Disabled"

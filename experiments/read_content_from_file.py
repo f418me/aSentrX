@@ -1,6 +1,6 @@
 from utils import StatusParser
 
-INPUT_FILENAME = "raw_statuses_dump_trump_2025.txt"  # Deine Datei mit den Status-Strings
+INPUT_FILENAME = "raw_statuses_dump_trump_2025.txt"
 
 def process_statuses():
     try:
@@ -17,7 +17,6 @@ def process_statuses():
                     print(f"  ID: {status_obj.id}")
                     print(f"  Content (cleaned): {status_obj.get_content(clean_html=True)}")
                     print(f"  Account: {status_obj.account_username}")
-                    # ... weitere Attribute abrufen ...
                 else:
                     print(f"  Failed to parse line {line_number}. Error: {status_obj.parse_error}")
 
