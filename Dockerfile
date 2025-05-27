@@ -27,10 +27,12 @@ COPY --from=builder /usr/local/lib/python3.12/site-packages/ /usr/local/lib/pyth
 COPY --from=builder /usr/local/bin/ /usr/local/bin/
 
 COPY main.py .
-COPY utils/ ./utils/
+
 COPY ai/ ./ai/
-COPY experiments/ ./experiments/
+COPY exchanges/ ./exchanges/
 COPY socialmedia/ ./socialmedia/
+COPY trader/ ./trader/
+COPY experiments/ ./experiments/
 COPY utils/ ./utils/
 
 

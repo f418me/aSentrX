@@ -6,21 +6,6 @@ services:
     container_name: asentrx_container
     restart: unless-stopped
     env_file:
-      - .env-prod # Lädt Variablen aus der .env Datei
+      - .env-prod
     volumes:
-      # Mountet ein lokales 'app_logs' Verzeichnis in das '/app/logs' Verzeichnis im Container
-      # Damit werden Logs persistent auf dem Host gespeichert.
-      # Stelle sicher, dass dein Logger in '/app/logs/asentrx_activity.log' schreibt (siehe .env).
       - ./app_logs:/app/logs
-    # Wenn du Ports freigeben müsstest (hier nicht der Fall, da es ein Hintergrund-Worker ist):
-    # ports:
-    #   - "8000:8000"
-    # Standardmäßig wird das Netzwerk 'default' verwendet.
-    # Für spezifische Netzwerkkonfigurationen:
-    # networks:
-    #   - my_custom_network
-
-# Optional: Definiere benutzerdefinierte Netzwerke
-# networks:
-#   my_custom_network:
-#     driver: bridge
