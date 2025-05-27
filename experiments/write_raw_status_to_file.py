@@ -22,8 +22,8 @@ def main():
     try:
         statuses = api.pull_statuses(
             username=TARGET_USERNAME,
-            replies=False, # Hardcoded to False
-            verbose=API_VERBOSE_OUTPUT, # Controls truthbrush's own console verbosity
+            replies=False,
+            verbose=API_VERBOSE_OUTPUT,
             since_id=SINCE_ID_FILTER
         )
     except Exception as e:
@@ -34,7 +34,6 @@ def main():
         print("[-] No statuses found.")
         return
 
-    # --- Write raw statuses to file ---
     try:
         with open(OUTPUT_FILENAME_RAW_STATUSES, 'w', encoding='utf-8') as f_raw:
             for status in statuses:

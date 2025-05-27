@@ -12,22 +12,29 @@ from exchanges.bitfinex_trader import BitfinexTrader
 from trader.trader import Trader
 from utils.sms_notifier import SmsNotifier
 
-
 logger = logging.getLogger(f"{APP_LOGGER_NAME}.TrueSocial")
 
 PROD_EXECUTION_ENABLED = os.getenv("PROD_EXECUTION", "False").lower() == "true"
 SMS_NOTIFICATIONS_ENABLED = os.getenv("SMS_NOTIFICATIONS_ENABLED", "False").lower() == "true"
 
-TRADE_SYMBOL = "tBTCF0:USTF0"
-ORDER_LEVERAGE = 10
+TRADE_SYMBOL = os.getenv("TRADE_SYMBOL", "tBTCF0:USTF0")
 
-ORDER_AMOUNT_BUY_HIGH_CONF = 0.001
-ORDER_AMOUNT_SELL_HIGH_CONF = -0.001
-ORDER_AMOUNT_BUY_MED_CONF = 0.0005
-ORDER_AMOUNT_SELL_MED_CONF = -0.0005
+# --- ORDER AMOUNTS (Positive for BUY/LONG, Negative for SHORT) ---
+ORDER_AMOUNT_BUY_HIGH_CONF = float(os.getenv("ORDER_AMOUNT_BUY_HIGH_CONF", "0.001"))
+ORDER_AMOUNT_SHORT_HIGH_CONF = float(os.getenv("ORDER_AMOUNT_SHORT_HIGH_CONF", "-0.001"))
+ORDER_AMOUNT_BUY_MED_CONF = float(os.getenv("ORDER_AMOUNT_BUY_MED_CONF", "0.0005"))
+ORDER_AMOUNT_SHORT_MED_CONF = float(os.getenv("ORDER_AMOUNT_SHORT_MED_CONF", "-0.0005"))
 
-LIMIT_OFFSET_BUY = 0.005
-LIMIT_OFFSET_SELL = 0.005
+# --- LEVERAGE SETTINGS ---
+LEVERAGE_BUY_HIGH_CONF = int(os.getenv("LEVERAGE_BUY_HIGH_CONF", "10"))
+LEVERAGE_SHORT_HIGH_CONF = int(os.getenv("LEVERAGE_SHORT_HIGH_CONF", "10"))
+LEVERAGE_BUY_MED_CONF = int(os.getenv("LEVERAGE_BUY_MED_CONF", "5"))
+LEVERAGE_SHORT_MED_CONF = int(os.getenv("LEVERAGE_SHORT_MED_CONF", "5"))
+
+# Trader class applies: BUY_LIMIT = PRICE * (1 + OFFSET), SHORT_LIMIT = PRICE * (1 - OFFSET)
+LIMIT_OFFSET_BUY = float(os.getenv("LIMIT_OFFSET_BUY", "0.005"))
+LIMIT_OFFSET_SHORT = float(os.getenv("LIMIT_OFFSET_SHORT", "0.005"))
+
 
 class TrueSocial:
     def __init__(self, username: str, fetch_interval_seconds: int, api_verbose_output: bool,
@@ -59,10 +66,10 @@ class TrueSocial:
         if SMS_NOTIFICATIONS_ENABLED:
             logger.info("SMS_NOTIFICATIONS_ENABLED is True. Initializing SmsNotifier.")
             self.sms_notifier = SmsNotifier()
-            if not self.sms_notifier.client:  # Check if Twilio client within notifier failed
+            if not self.sms_notifier.client:
                 logger.warning(
                     "SmsNotifier initialized, but Twilio client setup failed (check logs from SmsNotifier). SMS will not be sent.")
-                self.sms_notifier = None  # Set to None if sub-initialization failed
+                self.sms_notifier = None
         else:
             logger.info("SMS_NOTIFICATIONS_ENABLED is False. SmsNotifier will not be used.")
 
@@ -91,86 +98,121 @@ class TrueSocial:
                 f"Topic='{topic_str}' (TopicConf: {topic_confidence_str}), "
                 f"Direction='{direction_str}' (PriceConf: {confidence_str}). No trading action."
             )
+            logfire.info(
+                f"Status ID [{status_id_for_log}]: Incomplete analysis data for trading. "
+                f"Topic='{topic_str}' (TopicConf: {topic_confidence_str}), "
+                f"Direction='{direction_str}' (PriceConf: {confidence_str}). No trading action."
+            )
             return
 
         topic_lower = topic.lower()
-        direction_lower = direction.lower()
+        direction_lower = direction.lower() # "up", "down", "neutral"
         log_prefix = f"Status ID [{status_id_for_log}] Topic [{topic_lower}] Direction [{direction_lower}] Confidence [{confidence:.2f}]:"
 
         if topic_lower not in ["bitcoin", "market", "tariffs"]:
             logger.info(f"{log_prefix} Topic not relevant for automated trading ('{topic_lower}'). No action.")
+            logfire.info(f"{log_prefix} Topic not relevant for automated trading ('{topic_lower}'). No action.")
             return
 
         order_to_execute = None
-        sms_message_body = None  # To store the body for SMS notification
+        sms_message_body = None
 
-        if direction_lower == "up":
+
+        # Decision logic for BUY (LONG) or SHORT
+        # "up" direction from AI means we expect price to rise -> BUY/LONG
+        # "down" direction from AI means we expect price to fall -> SHORT
+        if direction_lower == "up": # Potential BUY/LONG signal
+            trade_action_desc_prefix = "BUY"
             if confidence >= 0.9:
-                desc = "High-Confidence UP"
-                logger.info(f"{log_prefix} ACTION: {desc}. Preparing BUY order.")
-                logfire.info(f"{log_prefix} ACTION: {desc}. Preparing BUY order.")
-                order_to_execute = {"amount": ORDER_AMOUNT_BUY_HIGH_CONF, "limit_offset_percentage": LIMIT_OFFSET_BUY,
-                                    "description": desc}
-                sms_message_body = f"aSentrX: BUY order triggered for {TRADE_SYMBOL} (High Conf UP). Amount: {ORDER_AMOUNT_BUY_HIGH_CONF}"
+                desc_suffix = "High-Confidence UP"
+                current_amount = ORDER_AMOUNT_BUY_HIGH_CONF
+                current_leverage = LEVERAGE_BUY_HIGH_CONF
+                limit_offset = LIMIT_OFFSET_BUY
             elif confidence >= 0.8:
-                desc = "Medium-Confidence UP"
-                logger.info(f"{log_prefix} ACTION: {desc}. Preparing BUY order.")
-                logfire.info(f"{log_prefix} ACTION: {desc}. Preparing BUY order.")
-                order_to_execute = {"amount": ORDER_AMOUNT_BUY_MED_CONF, "limit_offset_percentage": LIMIT_OFFSET_BUY,
-                                    "description": desc}
-                sms_message_body = f"aSentrX: BUY order triggered for {TRADE_SYMBOL} (Med Conf UP). Amount: {ORDER_AMOUNT_BUY_MED_CONF}"
+                desc_suffix = "Medium-Confidence UP"
+                current_amount = ORDER_AMOUNT_BUY_MED_CONF
+                current_leverage = LEVERAGE_BUY_MED_CONF
+                limit_offset = LIMIT_OFFSET_BUY
             else:
-                logger.info(f"{log_prefix} Predicted UP, but confidence ({confidence:.2f}) is below 0.8. No action.")
+                logger.info(f"{log_prefix} Predicted UP, but confidence ({confidence:.2f}) is below 0.8 for a BUY. No action.")
+                return
+
+            if current_amount is not None and current_leverage is not None: # Check if params were set
+                full_desc = f"{trade_action_desc_prefix} ({desc_suffix})"
+                logger.info(f"{log_prefix} ACTION: {full_desc}. Preparing order.")
+                logfire.info(f"{log_prefix} ACTION: {full_desc}. Preparing order.")
+                order_to_execute = {
+                    "amount": current_amount,
+                    "limit_offset_percentage": limit_offset,
+                    "leverage": current_leverage,
+                    "description": full_desc
+                }
+                sms_message_body = f"aSentrX: {full_desc} for {TRADE_SYMBOL}. Amt: {current_amount}, Lev: {current_leverage}"
+
 
         elif direction_lower == "down":
+            trade_action_desc_prefix = "SHORT"
             if confidence >= 0.9:
-                desc = "High-Confidence DOWN"
-                logger.info(f"{log_prefix} ACTION: {desc}. Preparing SELL order.")
-                logfire.info(f"{log_prefix} ACTION: {desc}. Preparing SELL order.")
-                order_to_execute = {"amount": ORDER_AMOUNT_SELL_HIGH_CONF, "limit_offset_percentage": LIMIT_OFFSET_SELL,
-                                    "description": desc}
-                sms_message_body = f"aSentrX: SELL order triggered for {TRADE_SYMBOL} (High Conf DOWN). Amount: {ORDER_AMOUNT_SELL_HIGH_CONF}"
+                desc_suffix = "High-Confidence DOWN"
+                current_amount = ORDER_AMOUNT_SHORT_HIGH_CONF
+                current_leverage = LEVERAGE_SHORT_HIGH_CONF
+                limit_offset = LIMIT_OFFSET_SHORT
             elif confidence >= 0.8:
-                desc = "Medium-Confidence DOWN"
-                logger.info(f"{log_prefix} ACTION: {desc}. Preparing SELL order.")
-                logfire.info(f"{log_prefix} ACTION: {desc}. Preparing SELL order.")
-                order_to_execute = {"amount": ORDER_AMOUNT_SELL_MED_CONF, "limit_offset_percentage": LIMIT_OFFSET_SELL,
-                                    "description": desc}
-                sms_message_body = f"aSentrX: SELL order triggered for {TRADE_SYMBOL} (Med Conf DOWN). Amount: {ORDER_AMOUNT_SELL_MED_CONF}"
+                desc_suffix = "Medium-Confidence DOWN"
+                current_amount = ORDER_AMOUNT_SHORT_MED_CONF
+                current_leverage = LEVERAGE_SHORT_MED_CONF
+                limit_offset = LIMIT_OFFSET_SHORT
             else:
-                logger.info(f"{log_prefix} Predicted DOWN, but confidence ({confidence:.2f}) is below 0.8. No action.")
+                logger.info(f"{log_prefix} Predicted DOWN, but confidence ({confidence:.2f}) is below 0.8 for a SHORT. No action.")
+                return
+
+            if current_amount is not None and current_leverage is not None:
+                full_desc = f"{trade_action_desc_prefix} ({desc_suffix})"
+                logger.info(f"{log_prefix} ACTION: {full_desc}. Preparing order.")
+                logfire.info(f"{log_prefix} ACTION: {full_desc}. Preparing order.")
+                order_to_execute = {
+                    "amount": current_amount,
+                    "limit_offset_percentage": limit_offset,
+                    "leverage": current_leverage,
+                    "description": full_desc
+                }
+                sms_message_body = f"aSentrX: {full_desc} for {TRADE_SYMBOL}. Amt: {current_amount}, Lev: {current_leverage}"
 
         elif direction_lower == "neutral":
             logger.info(f"{log_prefix} Predicted NEUTRAL. No action.")
+            logfire.info(f"{log_prefix} Predicted NEUTRAL. No action.")
+
         else:
             logger.warning(f"{log_prefix} Unknown price direction '{direction_lower}'. No action.")
 
         if order_to_execute:
             logger.info(
                 f"{log_prefix} Attempting to execute {order_to_execute['description']} order. "
-                f"Amount: {order_to_execute['amount']}, Leverage: {ORDER_LEVERAGE}, "
+                f"Amount: {order_to_execute['amount']}, Leverage: {order_to_execute['leverage']}, "
+                f"Limit Offset: {order_to_execute['limit_offset_percentage'] * 100:.2f}%"
+            )
+            logfire.info(
+                f"{log_prefix} Attempting to execute {order_to_execute['description']} order. "
+                f"Amount: {order_to_execute['amount']}, Leverage: {order_to_execute['leverage']}, "
                 f"Limit Offset: {order_to_execute['limit_offset_percentage'] * 100:.2f}%"
             )
             order_executed_successfully = False
             try:
-                # The execute_order method in Trader already prints success/failure and returns the result
                 order_result = self.my_trader.execute_order(
                     symbol=TRADE_SYMBOL,
                     amount=order_to_execute["amount"],
-                    leverage=ORDER_LEVERAGE,
+                    leverage=order_to_execute["leverage"],
                     limit_offset_percentage=order_to_execute["limit_offset_percentage"]
                 )
-                if order_result:  # Check if order_result indicates success (not None or empty)
+                if order_result:
                     order_executed_successfully = True
-                    # Note: Trader.execute_order already prints "Order submission successful..."
             except Exception as e:
                 logger.error(
                     f"{log_prefix} EXCEPTION during order execution for {order_to_execute['description']}: {e}",
                     exc_info=True)
 
-            # --- Send SMS Notification if order was attempted and SMS is enabled ---
             if sms_message_body and self.sms_notifier:
-                final_sms_body = f"{sms_message_body}. Status: {'Succeeded' if order_executed_successfully else 'Failed or Aborted'}."
+                final_sms_body = f"{sms_message_body}. Status: {'Succeeded' if order_executed_successfully else 'Failed/Aborted'}."
                 self.sms_notifier.send_sms(final_sms_body)
             elif sms_message_body and not self.sms_notifier:
                 logger.debug(
@@ -260,6 +302,7 @@ class TrueSocial:
                 logger.warning(
                     "The newest status in the fetched batch does not have an 'id' field, cannot update last_known_id.")
 
+
     def run(self, shutdown_event: threading.Event):
         logger.info(
             f"TrueSocial run loop starting for '{self.username}'. Statuses will be fetched every {self.interval_seconds} seconds.")
@@ -274,3 +317,4 @@ class TrueSocial:
                             exc_info=True)
         finally:
             logger.info(f"TrueSocial run loop for '{self.username}' has finished.")
+

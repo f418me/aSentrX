@@ -4,7 +4,7 @@ from typing import Union, Optional
 
 from dotenv import load_dotenv
 from pydantic import BaseModel
-from pydantic_ai import Agent, RunContext  # RunContext might not be needed if tool is removed or simplified
+from pydantic_ai import Agent, RunContext
 from utils.logger_config import APP_LOGGER_NAME
 
 logger = logging.getLogger(f"{APP_LOGGER_NAME}.asentrx_agent")
@@ -12,8 +12,6 @@ logger = logging.getLogger(f"{APP_LOGGER_NAME}.asentrx_agent")
 logger.debug("aSentrX Agent script (module) loaded or started.")
 
 load_dotenv()
-
-# --- Pydantic Models ---
 
 class TopicClassification(BaseModel):
     """Result of the first agent, classifying the topic."""
@@ -43,7 +41,6 @@ class AnalysisOutput(BaseModel):
     price_reasoning: Optional[str] = None
 
 
-# --- Agent Definitions ---
 
 # Agent 1: Topic Classification
 topic_classification_agent = Agent[None, Union[TopicClassification, Failed]](
@@ -61,13 +58,10 @@ topic_classification_agent = Agent[None, Union[TopicClassification, Failed]](
     ),
 )
 
-# Optional: Tool for Agent 1 if special context is still needed for general topic classification
-# If not, this tool can be removed or simplified.
+# todo special context if needed or remove
 @topic_classification_agent.tool
 async def provide_context_for_topic_classification(ctx: RunContext[str]) -> str:
     logger.debug(f"Tool 'provide_context_for_topic_classification' called with deps: {ctx.deps}")
-    # Example: You might provide a list of current hot economic topics or specific keywords to watch for.
-    # For simplicity, we can keep the existing SPECIAL_CONTEXT or make it more generic.
     return f"Context hint: {os.getenv("SPECIAL_CONTEXT", "Focus on economic and financial implications.")}"
 
 
@@ -131,10 +125,7 @@ class ContentAnalyzer:
         pipeline_output = AnalysisOutput()
 
         try:
-            # --- Step 1: Topic Classification ---
             logger.info(f"Status ID [{status_id_for_logging}]: Running topic classification agent...")
-            # Pass a simple string or a more structured input if the tool expects it.
-            # For now, assuming "General Knowledge" or similar default if tool not crucial.
             result_topic_classification = topic_classification_agent.run_sync(content, deps="Initial Analysis")
 
 
@@ -155,7 +146,6 @@ class ContentAnalyzer:
                     f"Reasoning='{topic_data.reasoning}'"
                 )
 
-                # --- Step 2: Specific Agent based on Classification ---
                 direction_agent_output = None
                 agent_name_for_log = ""
 
@@ -179,12 +169,10 @@ class ContentAnalyzer:
 
                 elif topic_data.classification == "others":
                     logger.info(f"Status ID [{status_id_for_logging}]: Topic classified as 'others'. No further price direction analysis.")
-                    # No specific agent to run, pipeline_output already has None for price fields.
                 else:
                     logger.warning(
                         f"Status ID [{status_id_for_logging}]: Unknown topic classification '{topic_data.classification}'. Skipping direction agent.")
 
-                # Process output of the specific direction agent
                 if direction_agent_output:
                     if isinstance(direction_agent_output, Failed):
                         logger.warning(
@@ -204,7 +192,7 @@ class ContentAnalyzer:
                             f"Status ID [{status_id_for_logging}]: {agent_name_for_log} agent returned an unexpected Pydantic model type: {type(direction_agent_output)}")
                         pipeline_output.price_reasoning = f"{agent_name_for_log} agent returned unexpected type."
 
-            else: # Should not happen if Pydantic types are correctly handled by Agent
+            else:
                 logger.error(
                     f"Status ID [{status_id_for_logging}]: Topic classification agent returned an unexpected Pydantic model type: {type(result_topic_classification.output)}")
                 pipeline_output.topic_reasoning = "Topic classification agent returned unexpected type."
@@ -213,7 +201,6 @@ class ContentAnalyzer:
             logger.error(
                 f"Status ID [{status_id_for_logging}]: An unexpected error occurred during content analysis pipeline: {e}",
                 exc_info=True)
-            # Ensure pipeline_output reflects a general failure if not already set
             if not pipeline_output.topic_reasoning and not pipeline_output.price_reasoning:
                  pipeline_output.topic_reasoning = f"Pipeline error: {e}"
 

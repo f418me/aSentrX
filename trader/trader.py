@@ -15,7 +15,7 @@ class Trader:
     # We'll use 15 based on your data, but add a check.
     DERIV_STATUS_SYMBOL_IDX = 0
     DERIV_STATUS_LAST_PRICE_IDX = 3
-    DERIV_STATUS_MARK_PRICE_IDX = 15  # Based on your example: 107255.7433
+    DERIV_STATUS_MARK_PRICE_IDX = 15
 
     def __init__(self, bfx_trader: BitfinexTrader):
         """
@@ -53,7 +53,6 @@ class Trader:
         print(
             f"Attempting to execute order for {symbol}: amount={amount}, lev={leverage}, offset={limit_offset_percentage * 100}%.")
 
-        # 1. Abfrage des Derivatestatus
         status_data_list = self.bfx_trader.get_derivative_status(symbol=symbol)
 
         if not status_data_list:
@@ -74,8 +73,6 @@ class Trader:
             print(f"Received inner list: {status_data}")
             return None
 
-        # 2. Extrahiere aktuellen Preis (MARK_PRICE bevorzugt, sonst LAST_PRICE)
-        current_price = None
         mark_price_val = status_data[self.DERIV_STATUS_MARK_PRICE_IDX]
         last_price_val = status_data[self.DERIV_STATUS_LAST_PRICE_IDX]
 
@@ -109,7 +106,6 @@ class Trader:
         print(
             f"Calculated limit price for {symbol}: {limit_price:.5f} (from current: {current_price:.5f} with offset: {limit_offset_percentage * 100:.2f}%)")
 
-        # 4. Order submittieren
         # The amount should be positive for buy, negative for sell.
         # Leverage is passed as 'lev'.
         # Type is explicitly 'LIMIT'.

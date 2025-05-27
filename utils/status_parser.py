@@ -1,4 +1,4 @@
-import ast  # For safely evaluating a string containing a Python literal
+import ast
 from bs4 import BeautifulSoup
 
 class StatusParser:
@@ -107,71 +107,3 @@ class StatusParser:
         Returns the entire parsed status data as a dictionary.
         """
         return self.status_data
-
-# --- Example Usage ---
-if __name__ == "__main__":
-    # Example lines from your file (ensure they are valid Python dict strings)
-    line1_str = "{'id': '114520307594338802', 'created_at': '2025-05-17T00:20:17.034Z', 'content': '<p>This is <b>bold</b> text.</p><p>Another paragraph.</p>', 'account': {'username': 'TestUser'}}"
-    line2_str = "{'id': '114520015165633741', 'content': '<p><a href=\"https://example.com\">A Link</a> and some text.</p>'}"
-    invalid_line_str = "{'id': 'broken" # Intentionally broken
-
-    status_line_from_file = line1_str # Simulate reading a line
-
-    parser = StatusParser(status_line_from_file)
-
-    if parser.is_valid():
-        print(f"Status ID: {parser.id}")
-        print(f"Created At: {parser.created_at}")
-        print(f"Account Username: {parser.account_username}")
-
-        print("\nRaw Content:")
-        print(parser.get_content()) # clean_html=False by default
-
-        print("\nCleaned Content:")
-        print(parser.get_content(clean_html=True))
-
-        print("\nGetting a specific attribute (e.g., visibility):")
-        print(f"Visibility: {parser.get_attribute('visibility', 'N/A')}") # Example for a key not in the minimal example
-
-        print("\nRaw Data Dictionary:")
-        # print(parser.get_raw_data()) # Uncomment to see the whole dict
-    else:
-        print(f"Could not parse the status line. Error: {parser.parse_error}")
-
-    print("-" * 30)
-    parser2 = StatusParser(line2_str)
-    if parser2.is_valid():
-        print(f"Parser 2 - ID: {parser2.id}")
-        print(f"Parser 2 - Cleaned Content: {parser2.get_content(clean_html=True)}")
-    else:
-        print(f"Could not parse the status line for parser2. Error: {parser2.parse_error}")
-
-    print("-" * 30)
-    parser_invalid = StatusParser(invalid_line_str)
-    if not parser_invalid.is_valid():
-        print(f"Parser Invalid - Correctly identified as invalid. Error: {parser_invalid.parse_error}")
-
-
-    # How you would use it with your file:
-    # INPUT_FILENAME = "raw_statuses_dump.txt"
-    # try:
-    #     with open(INPUT_FILENAME, 'r', encoding='utf-8') as f:
-    #         for line_number, line_content_str in enumerate(f, 1):
-    #             line_content_str = line_content_str.strip()
-    #             if not line_content_str: # Skip empty lines
-    #                 continue
-    #
-    #             print(f"\n--- Processing line {line_number} ---")
-    #             status_parser = StatusParser(line_content_str)
-    #
-    #             if status_parser.is_valid():
-    #                 print(f"  ID: {status_parser.id}")
-    #                 print(f"  Content (cleaned): {status_parser.get_content(clean_html=True)}")
-    #                 # Access other attributes as needed
-    #             else:
-    #                 print(f"  Failed to parse line {line_number}. Error: {status_parser.parse_error}")
-    #
-    # except FileNotFoundError:
-    #     print(f"Error: Input file '{INPUT_FILENAME}' not found.")
-    # except Exception as e:
-    #     print(f"An unexpected error occurred: {e}")

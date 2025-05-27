@@ -95,14 +95,11 @@ class BitfinexTrader:
         # Update with any parameters passed directly to the method
         params_to_submit.update(order_specific_params)
 
-        # Add mandatory parameters
         params_to_submit['symbol'] = final_symbol
-        params_to_submit['amount'] = str(amount)  # Ensure amount is string
-        params_to_submit['price'] = str(price)  # Ensure price is string
+        params_to_submit['amount'] = str(amount)
+        params_to_submit['price'] = str(price)
 
-        # Ensure essential parameters are present
         if 'type' not in params_to_submit:
-            # Default to LIMIT if not specified anywhere
             params_to_submit['type'] = "LIMIT"
             print(f"Warning: Order type not specified, defaulting to 'LIMIT'.")
 

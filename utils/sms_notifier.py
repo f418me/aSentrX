@@ -21,7 +21,7 @@ except ImportError:
 
 logger = logging.getLogger(f"{APP_LOGGER_NAME}.SmsNotifier")
 
-load_dotenv() # Load environment variables from .env
+load_dotenv()
 
 class SmsNotifier:
     """
@@ -30,8 +30,8 @@ class SmsNotifier:
     def __init__(self):
         self.account_sid = os.getenv('TWILIO_ACCOUNT_SID')
         self.auth_token = os.getenv('TWILIO_AUTH_TOKEN')
-        self.from_number = os.getenv('TWILIO_FROM_NUMBER') # Configurable "from" number
-        self.to_number = os.getenv('TWILIO_TO_NUMBER')     # Configurable "to" number
+        self.from_number = os.getenv('TWILIO_FROM_NUMBER')
+        self.to_number = os.getenv('TWILIO_TO_NUMBER')
 
         if not all([self.account_sid, self.auth_token, self.from_number, self.to_number]):
             logger.warning(
@@ -79,29 +79,3 @@ class SmsNotifier:
         except Exception as e: # Catch any other unexpected errors
             logger.error(f"Unexpected error while sending SMS to {self.to_number}: {e}", exc_info=True)
             return None
-
-# --- Example Usage (optional, for testing this file directly) ---
-if __name__ == '__main__':
-    # This part requires your logger_config to be set up to see output if you run this file directly.
-    # Basic config for testing if logger_config is not available/set up for direct run:
-    if not logging.getLogger(APP_LOGGER_NAME).hasHandlers():
-         logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-
-    notifier = SmsNotifier()
-
-    if notifier.client: # Only attempt if client initialized
-        test_body_buy = "aSentrX Test: Mock BUY order executed."
-        sid_buy = notifier.send_sms(test_body_buy)
-        if sid_buy:
-            print(f"Test BUY SMS sent. SID: {sid_buy}")
-        else:
-            print("Failed to send test BUY SMS.")
-
-        test_body_sell = "aSentrX Test: Mock SELL order executed."
-        sid_sell = notifier.send_sms(test_body_sell)
-        if sid_sell:
-            print(f"Test SELL SMS sent. SID: {sid_sell}")
-        else:
-            print("Failed to send test SELL SMS.")
-    else:
-        print("SmsNotifier client not initialized. Check .env configuration and logs.")
