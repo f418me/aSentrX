@@ -4,3 +4,4 @@ venv
 .idea
 /experiments/asentrx_default.log
 /asentrx_default.log
+/.env-prod
