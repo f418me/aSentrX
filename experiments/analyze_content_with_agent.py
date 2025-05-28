@@ -1,14 +1,15 @@
+import os
+
 from ai.asentrx_agent import ContentAnalyzer
 from utils.logger_config import configure_logging
 
 try:
     configure_logging()
-except ValueError: # Handle potential issue if already configured by another entry point
+except ValueError:
     pass
 
 
-#content_cleaned = "We will sell all our gold and buy bitcoin instead."
-content_cleaned = "The EU will have to pay 50% import tarfis from now."
+content = os.getenv("TEMP_TEST_CONTENT")
 content_analyzer = ContentAnalyzer()
-result = content_analyzer.analyze_content(content_cleaned)
+result = content_analyzer.analyze_content(content)
 print(result)

@@ -31,6 +31,11 @@ LEVERAGE_SHORT_HIGH_CONF = int(os.getenv("LEVERAGE_SHORT_HIGH_CONF", "10"))
 LEVERAGE_BUY_MED_CONF = int(os.getenv("LEVERAGE_BUY_MED_CONF", "5"))
 LEVERAGE_SHORT_MED_CONF = int(os.getenv("LEVERAGE_SHORT_MED_CONF", "5"))
 
+# --- CONFIDENCE THRESHOLDS FOR TRADING ---
+CONFIDENCE_THRESHOLD_HIGH = float(os.getenv("CONFIDENCE_THRESHOLD_HIGH", "0.95"))
+CONFIDENCE_THRESHOLD_MED = float(os.getenv("CONFIDENCE_THRESHOLD_MED", "0.9"))
+
+
 # Trader class applies: BUY_LIMIT = PRICE * (1 + OFFSET), SHORT_LIMIT = PRICE * (1 - OFFSET)
 LIMIT_OFFSET_BUY = float(os.getenv("LIMIT_OFFSET_BUY", "0.005"))
 LIMIT_OFFSET_SHORT = float(os.getenv("LIMIT_OFFSET_SHORT", "0.005"))
@@ -77,6 +82,14 @@ class TrueSocial:
                     f"Initial since_id: {self.last_known_id or 'None'}.")
         logger.debug(f"Instance configuration - Fetch interval: {fetch_interval_seconds}s. "
                      f"Truthbrush API Verbose: {self.api_verbose_output}.")
+        logger.info(f"Trading Configuration - TRADE_SYMBOL: {TRADE_SYMBOL}")
+        logger.info(f"Order Amounts - BUY_HIGH_CONF: {ORDER_AMOUNT_BUY_HIGH_CONF}, SHORT_HIGH_CONF: {ORDER_AMOUNT_SHORT_HIGH_CONF}, "
+                    f"BUY_MED_CONF: {ORDER_AMOUNT_BUY_MED_CONF}, SHORT_MED_CONF: {ORDER_AMOUNT_SHORT_MED_CONF}")
+        logger.info(f"Leverage Settings - BUY_HIGH_CONF: {LEVERAGE_BUY_HIGH_CONF}, SHORT_HIGH_CONF: {LEVERAGE_SHORT_HIGH_CONF}, "
+                    f"BUY_MED_CONF: {LEVERAGE_BUY_MED_CONF}, SHORT_MED_CONF: {LEVERAGE_SHORT_MED_CONF}")
+        logger.info(f"Confidence Thresholds - HIGH: {CONFIDENCE_THRESHOLD_HIGH}, MED: {CONFIDENCE_THRESHOLD_MED}")
+        logger.info(f"Limit Offsets - BUY: {LIMIT_OFFSET_BUY*100:.2f}%, SHORT: {LIMIT_OFFSET_SHORT*100:.2f}%")
+
 
     def _execute_trade_logic(self, analysis_result, status_id_for_log: str):
         if not self.my_trader:
@@ -123,18 +136,18 @@ class TrueSocial:
         # "down" direction from AI means we expect price to fall -> SHORT
         if direction_lower == "up": # Potential BUY/LONG signal
             trade_action_desc_prefix = "BUY"
-            if confidence >= 0.9:
+            if confidence >= CONFIDENCE_THRESHOLD_HIGH:
                 desc_suffix = "High-Confidence UP"
                 current_amount = ORDER_AMOUNT_BUY_HIGH_CONF
                 current_leverage = LEVERAGE_BUY_HIGH_CONF
                 limit_offset = LIMIT_OFFSET_BUY
-            elif confidence >= 0.8:
+            elif confidence >= CONFIDENCE_THRESHOLD_MED:
                 desc_suffix = "Medium-Confidence UP"
                 current_amount = ORDER_AMOUNT_BUY_MED_CONF
                 current_leverage = LEVERAGE_BUY_MED_CONF
                 limit_offset = LIMIT_OFFSET_BUY
             else:
-                logger.info(f"{log_prefix} Predicted UP, but confidence ({confidence:.2f}) is below 0.8 for a BUY. No action.")
+                logger.info(f"{log_prefix} Predicted UP, but confidence ({confidence:.2f}) is below {CONFIDENCE_THRESHOLD_MED} for a BUY. No action.")
                 return
 
             if current_amount is not None and current_leverage is not None: # Check if params were set
@@ -152,18 +165,18 @@ class TrueSocial:
 
         elif direction_lower == "down":
             trade_action_desc_prefix = "SHORT"
-            if confidence >= 0.9:
+            if confidence >= CONFIDENCE_THRESHOLD_HIGH:
                 desc_suffix = "High-Confidence DOWN"
                 current_amount = ORDER_AMOUNT_SHORT_HIGH_CONF
                 current_leverage = LEVERAGE_SHORT_HIGH_CONF
                 limit_offset = LIMIT_OFFSET_SHORT
-            elif confidence >= 0.8:
+            elif confidence >= CONFIDENCE_THRESHOLD_MED:
                 desc_suffix = "Medium-Confidence DOWN"
                 current_amount = ORDER_AMOUNT_SHORT_MED_CONF
                 current_leverage = LEVERAGE_SHORT_MED_CONF
                 limit_offset = LIMIT_OFFSET_SHORT
             else:
-                logger.info(f"{log_prefix} Predicted DOWN, but confidence ({confidence:.2f}) is below 0.8 for a SHORT. No action.")
+                logger.info(f"{log_prefix} Predicted DOWN, but confidence ({confidence:.2f}) is below {CONFIDENCE_THRESHOLD_MED} for a SHORT. No action.")
                 return
 
             if current_amount is not None and current_leverage is not None:
@@ -317,4 +330,3 @@ class TrueSocial:
                             exc_info=True)
         finally:
             logger.info(f"TrueSocial run loop for '{self.username}' has finished.")
-
