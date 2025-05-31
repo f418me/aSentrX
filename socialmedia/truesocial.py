@@ -1,5 +1,6 @@
 import logging
 import os
+import sys
 import threading
 
 import logfire
@@ -35,7 +36,6 @@ LEVERAGE_SHORT_MED_CONF = int(os.getenv("LEVERAGE_SHORT_MED_CONF", "5"))
 CONFIDENCE_THRESHOLD_HIGH = float(os.getenv("CONFIDENCE_THRESHOLD_HIGH", "0.95"))
 CONFIDENCE_THRESHOLD_MED = float(os.getenv("CONFIDENCE_THRESHOLD_MED", "0.9"))
 
-
 # Trader class applies: BUY_LIMIT = PRICE * (1 + OFFSET), SHORT_LIMIT = PRICE * (1 - OFFSET)
 LIMIT_OFFSET_BUY = float(os.getenv("LIMIT_OFFSET_BUY", "0.005"))
 LIMIT_OFFSET_SHORT = float(os.getenv("LIMIT_OFFSET_SHORT", "0.005"))
@@ -46,14 +46,59 @@ class TrueSocial:
                  initial_since_id: str | None = None):
         self.api = Api()
         self.username = username
-        self.last_known_id = initial_since_id
         self.interval_seconds = fetch_interval_seconds
         self.api_verbose_output = api_verbose_output
         self.content_analyzer = ContentAnalyzer()
 
-        self.my_trader: Trader | None = None
         if PROD_EXECUTION_ENABLED:
+            logger.info(
+                f"PROD_EXECUTION is enabled.. Attempting to fetch current latest status ID "
+                f"to process only posts made after application startup.")
+            try:
+                # Pull_statuses without since_id fetches the latest ones.
+                # We only need the ID of the very latest status.
+                statuses_gen = self.api.pull_statuses(
+                    username=self.username,
+                    replies=False,
+                    since_id=initial_since_id,
+                    verbose=self.api_verbose_output
+                )
+                # Get a list from generator and take the first item
+                # Truthbrush's pull_statuses yields newest items first.
+                statuses_list = list(statuses_gen)
+                latest_status = statuses_list[0]
+
+                if latest_status and 'id' in latest_status:
+                    self.last_known_id = str(latest_status['id'])  # Ensure it's a string
+                    logger.info(f"PROD: Successfully set last_known_id to '{self.last_known_id}' "
+                                f"(ID of the latest status at startup for '{self.username}'). "
+                                f"Only posts strictly newer than this will be processed.")
+                elif latest_status is None:  # No posts found for this user
+                    error_message = (f"PROD: CRITICAL - No existing statuses found for user '{self.username}'. "
+                                     f"Cannot reliably determine a starting point. Aborting initialization.")
+                    logger.error(error_message)
+                    logfire.error(error_message)
+                    raise RuntimeError(error_message)
+                else:  # Status exists but has no ID (latest_status is not None, but 'id' not in latest_status)
+                    error_message = (
+                        f"PROD: CRITICAL - Fetched latest status for '{self.username}' but it has no 'id' attribute. "
+                        f"This is unexpected. Cannot reliably determine a starting point. Aborting initialization.")
+                    logger.error(error_message)
+                    logfire.error(error_message)
+                    raise RuntimeError(error_message)
+            except RuntimeError as e:
+                error_message = (f"Initialization failed for user '{self.username}': {e}")
+                logger.error(error_message)
+                logfire.error(error_message)
+                sys.exit(1)
+            except Exception as e:
+                error_message = (f"PROD: An unexpected error occurred while trying to set last_known_id for '{self.username}': {e}")
+                logger.error(error_message)
+                logfire.error(error_message)
+                sys.exit(1)
+
             logger.info("PROD_EXECUTION is enabled. Attempting to initialize Bitfinex Trader.")
+            self.my_trader: Trader | None = None
             try:
                 bfx_wrapper = BitfinexTrader(default_symbol=TRADE_SYMBOL)
                 if bfx_wrapper.bfx_client:
@@ -64,32 +109,36 @@ class TrueSocial:
                         "PROD_EXECUTION is True, but Bitfinex client could not be initialized. Trading will be skipped.")
             except Exception as e:
                 logger.error(f"Failed to initialize Bitfinex Trader for PROD_EXECUTION: {e}", exc_info=True)
-        else:
-            logger.info("PROD_EXECUTION is disabled. Trader will not be initialized.")
+        else:  # PROD_EXECUTION is False
+            self.last_known_id = initial_since_id
+            logger.info(f"PROD_EXECUTION is disabled for '{self.username}'. "
+                        f"Using initial_since_id from .env: '{self.last_known_id or 'None'}'.")
+
 
         self.sms_notifier: SmsNotifier | None = None
         if SMS_NOTIFICATIONS_ENABLED:
             logger.info("SMS_NOTIFICATIONS_ENABLED is True. Initializing SmsNotifier.")
             self.sms_notifier = SmsNotifier()
-            if not self.sms_notifier.client:
+            if not self.sms_notifier.client:  # Assuming client attribute indicates success
                 logger.warning(
                     "SmsNotifier initialized, but Twilio client setup failed (check logs from SmsNotifier). SMS will not be sent.")
-                self.sms_notifier = None
+                self.sms_notifier = None  # Ensure it's None if setup failed
         else:
             logger.info("SMS_NOTIFICATIONS_ENABLED is False. SmsNotifier will not be used.")
 
         logger.info(f"TrueSocial instance initialized for user: '{self.username}'. "
-                    f"Initial since_id: {self.last_known_id or 'None'}.")
+                    f"Effective initial since_id: {self.last_known_id or 'None'}.")
         logger.debug(f"Instance configuration - Fetch interval: {fetch_interval_seconds}s. "
                      f"Truthbrush API Verbose: {self.api_verbose_output}.")
         logger.info(f"Trading Configuration - TRADE_SYMBOL: {TRADE_SYMBOL}")
-        logger.info(f"Order Amounts - BUY_HIGH_CONF: {ORDER_AMOUNT_BUY_HIGH_CONF}, SHORT_HIGH_CONF: {ORDER_AMOUNT_SHORT_HIGH_CONF}, "
-                    f"BUY_MED_CONF: {ORDER_AMOUNT_BUY_MED_CONF}, SHORT_MED_CONF: {ORDER_AMOUNT_SHORT_MED_CONF}")
-        logger.info(f"Leverage Settings - BUY_HIGH_CONF: {LEVERAGE_BUY_HIGH_CONF}, SHORT_HIGH_CONF: {LEVERAGE_SHORT_HIGH_CONF}, "
-                    f"BUY_MED_CONF: {LEVERAGE_BUY_MED_CONF}, SHORT_MED_CONF: {LEVERAGE_SHORT_MED_CONF}")
+        logger.info(
+            f"Order Amounts - BUY_HIGH_CONF: {ORDER_AMOUNT_BUY_HIGH_CONF}, SHORT_HIGH_CONF: {ORDER_AMOUNT_SHORT_HIGH_CONF}, "
+            f"BUY_MED_CONF: {ORDER_AMOUNT_BUY_MED_CONF}, SHORT_MED_CONF: {ORDER_AMOUNT_SHORT_MED_CONF}")
+        logger.info(
+            f"Leverage Settings - BUY_HIGH_CONF: {LEVERAGE_BUY_HIGH_CONF}, SHORT_HIGH_CONF: {LEVERAGE_SHORT_HIGH_CONF}, "
+            f"BUY_MED_CONF: {LEVERAGE_BUY_MED_CONF}, SHORT_MED_CONF: {LEVERAGE_SHORT_MED_CONF}")
         logger.info(f"Confidence Thresholds - HIGH: {CONFIDENCE_THRESHOLD_HIGH}, MED: {CONFIDENCE_THRESHOLD_MED}")
-        logger.info(f"Limit Offsets - BUY: {LIMIT_OFFSET_BUY*100:.2f}%, SHORT: {LIMIT_OFFSET_SHORT*100:.2f}%")
-
+        logger.info(f"Limit Offsets - BUY: {LIMIT_OFFSET_BUY * 100:.2f}%, SHORT: {LIMIT_OFFSET_SHORT * 100:.2f}%")
 
     def _execute_trade_logic(self, analysis_result, status_id_for_log: str):
         if not self.my_trader:
@@ -119,7 +168,7 @@ class TrueSocial:
             return
 
         topic_lower = topic.lower()
-        direction_lower = direction.lower() # "up", "down", "neutral"
+        direction_lower = direction.lower()  # "up", "down", "neutral"
         log_prefix = f"Status ID [{status_id_for_log}] Topic [{topic_lower}] Direction [{direction_lower}] Confidence [{confidence:.2f}]:"
 
         if topic_lower not in ["bitcoin", "market", "tariffs"]:
@@ -130,11 +179,10 @@ class TrueSocial:
         order_to_execute = None
         sms_message_body = None
 
-
         # Decision logic for BUY (LONG) or SHORT
         # "up" direction from AI means we expect price to rise -> BUY/LONG
         # "down" direction from AI means we expect price to fall -> SHORT
-        if direction_lower == "up": # Potential BUY/LONG signal
+        if direction_lower == "up":  # Potential BUY/LONG signal
             trade_action_desc_prefix = "BUY"
             if confidence >= CONFIDENCE_THRESHOLD_HIGH:
                 desc_suffix = "High-Confidence UP"
@@ -147,10 +195,11 @@ class TrueSocial:
                 current_leverage = LEVERAGE_BUY_MED_CONF
                 limit_offset = LIMIT_OFFSET_BUY
             else:
-                logger.info(f"{log_prefix} Predicted UP, but confidence ({confidence:.2f}) is below {CONFIDENCE_THRESHOLD_MED} for a BUY. No action.")
+                logger.info(
+                    f"{log_prefix} Predicted UP, but confidence ({confidence:.2f}) is below {CONFIDENCE_THRESHOLD_MED} for a BUY. No action.")
                 return
 
-            if current_amount is not None and current_leverage is not None: # Check if params were set
+            if current_amount is not None and current_leverage is not None:
                 full_desc = f"{trade_action_desc_prefix} ({desc_suffix})"
                 logger.info(f"{log_prefix} ACTION: {full_desc}. Preparing order.")
                 logfire.info(f"{log_prefix} ACTION: {full_desc}. Preparing order.")
@@ -176,7 +225,8 @@ class TrueSocial:
                 current_leverage = LEVERAGE_SHORT_MED_CONF
                 limit_offset = LIMIT_OFFSET_SHORT
             else:
-                logger.info(f"{log_prefix} Predicted DOWN, but confidence ({confidence:.2f}) is below {CONFIDENCE_THRESHOLD_MED} for a SHORT. No action.")
+                logger.info(
+                    f"{log_prefix} Predicted DOWN, but confidence ({confidence:.2f}) is below {CONFIDENCE_THRESHOLD_MED} for a SHORT. No action.")
                 return
 
             if current_amount is not None and current_leverage is not None:
@@ -217,7 +267,7 @@ class TrueSocial:
                     leverage=order_to_execute["leverage"],
                     limit_offset_percentage=order_to_execute["limit_offset_percentage"]
                 )
-                if order_result:
+                if order_result:  # Assuming execute_order returns something truthy on success
                     order_executed_successfully = True
             except Exception as e:
                 logger.error(
@@ -238,7 +288,7 @@ class TrueSocial:
             statuses_generator = self.api.pull_statuses(
                 username=self.username, replies=False, verbose=self.api_verbose_output, since_id=self.last_known_id
             )
-            statuses = list(statuses_generator)
+            statuses = list(statuses_generator)  # Materialize the generator to a list
         except Exception as e:
             logger.error(f"Error during API call to fetch statuses for '{self.username}': {e}", exc_info=True)
             return
@@ -247,8 +297,10 @@ class TrueSocial:
             logger.info(f"No new statuses found for '{self.username}' since id {self.last_known_id or 'None'}.")
             return
 
+        # Process statuses from oldest to newest within the batch
+        # truthbrush.Api.pull_statuses yields newest first. reversed() processes oldest first from the batch.
         for status_dict in reversed(statuses):
-            status_string = str(status_dict)
+            status_string = str(status_dict)  # Assuming status_dict can be stringified
             parser = StatusParser(status_string)
 
             if not parser.is_valid():
@@ -293,28 +345,43 @@ class TrueSocial:
                 logger.debug(
                     f"Status ID [{status_id}] has no text content after cleaning. Skipping AI analysis and trading.")
 
-        if statuses:
-            potential_newest_id = statuses[0].get('id')
-            if potential_newest_id:
-                try:
-                    current_last_id_int = int(self.last_known_id) if self.last_known_id else 0
-                    potential_newest_id_int = int(potential_newest_id)
-                    is_newer = potential_newest_id_int > current_last_id_int
-                except (ValueError, TypeError):
-                    is_newer = self.last_known_id is None or potential_newest_id > self.last_known_id
-                    logger.debug(
-                        f"Could not compare status IDs ({self.last_known_id}, {potential_newest_id}) numerically, used string/None comparison.")
+        # Update last_known_id to the ID of the newest status in the fetched batch
+        # statuses[0] is the newest because truthbrush returns newest first from the API.
+        if statuses:  # Ensure statuses list is not empty
+            potential_newest_status_dict = statuses[0]  # This is a dict representing the newest status in the batch
+            if isinstance(potential_newest_status_dict, dict) and 'id' in potential_newest_status_dict:
+                potential_newest_id = str(potential_newest_status_dict['id'])  # Ensure it's a string
+
+                is_newer = False
+                if self.last_known_id is None:
+                    is_newer = True  # Any ID is newer than None
+                else:
+                    # Standard Mastodon IDs are strings and can be compared lexicographically for recency
+                    # (they are snowflake-like IDs, generally increasing).
+                    # Numeric comparison could be an option if IDs were purely numeric and sequential.
+                    try:
+                        # Attempt numeric comparison if possible (e.g. if they are truly large integers)
+                        current_last_id_int = int(self.last_known_id)
+                        potential_newest_id_int = int(potential_newest_id)
+                        if potential_newest_id_int > current_last_id_int:
+                            is_newer = True
+                    except ValueError:
+                        # Fallback to string comparison, which is generally reliable for Mastodon IDs
+                        if potential_newest_id > self.last_known_id:
+                            is_newer = True
+
                 if is_newer:
                     logger.info(
                         f"Updating last_known_id from '{self.last_known_id or 'None'}' to '{potential_newest_id}'.")
                     self.last_known_id = potential_newest_id
                 else:
                     logger.debug(
-                        f"Newest ID in batch ('{potential_newest_id}') is not considered newer than current last_known_id ('{self.last_known_id or 'None'}'). Not updating.")
+                        f"Newest ID in batch ('{potential_newest_id}') is not considered newer than current last_known_id "
+                        f"('{self.last_known_id or 'None'}'). Not updating last_known_id.")
             else:
                 logger.warning(
-                    "The newest status in the fetched batch does not have an 'id' field, cannot update last_known_id.")
-
+                    "The newest status in the fetched batch is malformed or does not have an 'id' field. "
+                    "Cannot update last_known_id from this batch.")
 
     def run(self, shutdown_event: threading.Event):
         logger.info(
@@ -324,9 +391,14 @@ class TrueSocial:
                 self.fetch_and_process_statuses()
                 logger.debug(
                     f"Waiting for {self.interval_seconds} seconds before next fetch cycle for '{self.username}'...")
-                shutdown_event.wait(self.interval_seconds)
-        except Exception as e:
+                # shutdown_event.wait() will return True if the event is set before the timeout, False otherwise.
+                # This allows for quicker shutdown if interval_seconds is long.
+                if shutdown_event.wait(self.interval_seconds):
+                    break  # Event was set, exit loop
+        except Exception as e:  # Catch any unexpected error in the main processing loop
             logger.critical(f"A critical error occurred in the TrueSocial run loop for '{self.username}': {e}",
                             exc_info=True)
         finally:
             logger.info(f"TrueSocial run loop for '{self.username}' has finished.")
+
+
