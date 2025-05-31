@@ -1,7 +1,7 @@
 FROM python:3.12-slim AS builder
 
 # Set environment variables for Poetry
-ENV POETRY_VERSION=1.7.1 # Oder eine andere spezifische Version / lasse es weg für die neueste
+ENV POETRY_VERSION=1.7.1
 ENV POETRY_HOME="/opt/poetry"
 ENV POETRY_VIRTUALENVS_CREATE=false \
     POETRY_CACHE_DIR=/tmp/poetry_cache
