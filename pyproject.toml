@@ -1,0 +1,25 @@
+[tool.poetry]
+name = "aSentrX"
+version = "0.1.0"
+description = "Trading bot."
+authors = ["Felix Frei <felix.frei@gmx.ch>"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+logfire = "3.16.0"
+logfire-api = "3.16.0"
+python-dotenv = "1.1.0"
+requests = "2.32.3"
+truthbrush = {git = "https://github.com/stanfordio/truthbrush.git", rev = "25f75b3187773420ca0ee28a0a1b8d24c4955326"}
+twilio = "9.6.1"
+bitfinex-api-py = {git = "https://github.com/f418me/bitfinex-api-py.git"}
+beautifulsoup4 = "4.13.4"
+pydantic = "2.11.5"
+pydantic-ai ="0.2.12"
+
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
