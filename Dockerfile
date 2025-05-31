@@ -1,4 +1,3 @@
-# Stage 1: Builder Stage - Installiert Poetry und Projektabhängigkeiten
 FROM python:3.12-slim AS builder
 
 # Set environment variables for Poetry
