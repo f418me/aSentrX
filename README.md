@@ -1,234 +1,162 @@
 # aSentrX
 
-aSentrX is a collection of Python scripts designed for fetching, storing, and parsing social media statuses, primarily from Truth Social using the `truthbrush` library. It also includes a separate module for interacting with the Bitfinex API and an AI agent for content analysis. The system is designed to run continuously in the background, monitoring for new statuses.
+aSentrX is an advanced Python application designed for fetching, analyzing, and acting upon social media statuses, primarily from platforms like Truth Social using the `truthbrush` library. It integrates AI-driven content analysis to understand sentiment and potential market impacts, and can execute trades via the Bitfinex API. The system is architected for continuous operation, features robust logging with Logfire, SMS notifications via Twilio, and is deployed using Docker on Fly.io with CI/CD via GitHub Actions.
 
 ## Main Features
 
-*   **Status Fetching**: Retrieves statuses from a specific Truth Social user account.
+*   **Social Media Status Fetching**: Retrieves statuses from specific user accounts (e.g., Truth Social).
     *   Supports filtering by `since_id` to load only newer statuses.
     *   Option to exclude replies.
-*   **Continuous Monitoring**: The main script (`main.py`) runs as a service, periodically fetching new statuses.
-*   **Data Storage (for utility scripts)**: Saves fetched statuses as raw Python dictionary strings in a text file. Each line corresponds to one status. (Primarily used by `write_raw_status_to_file.py`).
+*   **Continuous Monitoring & Processing**: The main application (`main.py`) runs as a service, periodically fetching, parsing, and analyzing new statuses.
+*   **AI-Powered Content Analysis**:
+    *   Utilizes a `ContentAnalyzer` (powered by `pydantic-ai` and large language models) to analyze status content.
+    *   Classifies topics (e.g., market-related, bitcoin, tariffs).
+    *   Assesses potential impact and predicts price direction for relevant topics.
+*   **Automated Trading**:
+    *   Integrates with the Bitfinex API via `BitfinexTrader` and `Trader` classes.
+    *   Executes trading orders based on AI analysis results and configurable parameters (amount, leverage, offsets).
+*   **SMS Notifications**: Sends real-time alerts for significant events (e.g., trade execution) using Twilio.
+*   **Advanced Logging with Logfire**:
+    *   Comprehensive application logging.
+    *   Specialized logging and tracing for LLM calls and `pydantic-ai` agent interactions using [Logfire](https://logfire.pydantic.dev/).
+*   **Dependency management**:
+    *   Dependency management with [Poetry](https://python-poetry.org/).
+*   **Deployment & CI/CD**:
+    *   Containerized with Docker for consistent environments.
+    *   Deployed to [Fly.io](https://fly.io/).
+    *   Automated deployments from the `master` branch via GitHub Actions.
 *   **Status Parsing**:
-    *   A dedicated parser (`StatusParser`) reads raw status strings (e.g., from a file or directly from an API call).
-    *   Extracts specific attributes like ID, creation date, content, and account information (e.g., username).
-    *   Cleans HTML tags from the status content.
-    *   Tolerantly handles parsing errors.
-*   **AI Content Analysis**:
-    *   A `ContentAnalyzer` (`asentrx_agent.py`) analyzes the cleaned content of statuses.
-    *   Classifies tweets (e.g., market-related, private, other).
-    *   Assesses potential impact on Bitcoin price.
-    *   Predicts the likely direction of Bitcoin price changes.
-*   **Bitfinex API Integration**: A separate script (`bitfinex_rest.py`) demonstrates querying wallet information and other endpoints via the `bfxapi`.
-*   **Configurable Logging**: Detailed logging with configurable levels for file and console output.
-*   **Docker Support**: Easy deployment and execution with Docker and Docker Compose.
+    *   A dedicated `StatusParser` handles raw status data (e.g., from API calls).
+    *   Extracts key attributes (ID, creation date, content, user info).
+    *   Cleans HTML from status content.
+    *   Robustly handles parsing errors.
+*   **Configurability**: Use of environment variables (via `.env` file) for application settings, API keys, and feature flags.
 
 ## Prerequisites
 
-*   Python 3.12+ (for manual installation)
-*   pip (Python Package Installer, for manual installation)
-*   Docker and Docker Compose (for Docker-based deployment)
+*   Python 3.12+
+*   [Poetry](https://python-poetry.org/docs/#installation) (for managing dependencies and running the project)
+*   Docker and Docker Compose (for containerized deployment)
+*   Access to services and their API keys:
+    *   Truth Social (implicitly, via `truthbrush`)
+    *   An LLM provider compatible with `pydantic-ai` (e.g., Groq, OpenAI)
+    *   Bitfinex (for trading)
+    *   Twilio (for SMS notifications)
+    *   Logfire (for enhanced logging)
 
 ## Installation and Setup
 
-There are two main ways to install and run aSentrX: Manually or with Docker.
+### 1. Poetry Installation (for local development & contribution)
 
-### 1. Manual Installation (for development or specific use cases)
-
-1.  **Clone the repository or create the folder structure manually.**
-
-2.  **Create and activate a virtual environment (recommended):**
+1.  **Clone the repository:**
     ```bash
-    python -m venv venv
-    # Windows
-    venv\Scripts\activate
-    # macOS/Linux
-    source venv/bin/activate
+    git clone <your-repository-url>
+    cd <repository-name>
     ```
 
-3.  **Install dependencies:**
+2.  **Install Poetry** if you haven't already (see official [Poetry installation guide](https://python-poetry.org/docs/#installation)).
+
+3.  **Install project dependencies using Poetry:**
+    This command reads the `pyproject.toml` file, resolves dependencies, and installs them into a virtual environment managed by Poetry.
     ```bash
-    pip install -r requirements.txt
+    poetry install
     ```
-    *Note: The `truthbrush` entry installs directly from GitHub.*
 
-4.  **Create configuration file `.env`:**
-    Create a file named `.env` in the project's root directory. 
+4.  **Create and configure the `.env` file:**
+    Copy the `.env.example` (if provided) to `.env` or create a new `.env` file in the project's root directory. Populate it with your specific configurations and API keys.
 
-5. **Important:** Add `.env` to your `.gitignore` file to avoid accidentally publishing your keys.
+    **Important:** Add `.env` to your `.gitignore` file to prevent committing sensitive credentials.
 
-### 2. Docker Installation & Setup (Recommended for Deployment)
+### 2. Docker Setup (for Deployment & Consistent Environments)
 
-This method uses Docker to run the application in an isolated container.
+The project includes a `Dockerfile` and  a `docker-compose.yml` for managing the service.
 
 1.  **Clone the repository (if not already done).**
-
-2.  **Create configuration file `.env`:**
-    Create the `.env` file in the project's root directory as described in the "Manual Installation" section, point 4. Docker Compose will use this file to load environment variables into the container.
-
-3.  **(Optional, but recommended) Create `.dockerignore` file:**
-    Create a file named `.dockerignore` in the project's root directory to exclude unnecessary files from the Docker build context:
-    ```
-    .git
-    .venv
-    venv/
-    __pycache__/
-    *.pyc
-    *.pyo
-    *.pyd
-    .env
-    logs/
-    *.log
-    raw_statuses_*.txt
-    ```
-    *Note: `.env` is listed here because it's mounted directly into the container rather than copied into the image.*
-
-4.  **Build Docker Image (optional, as `docker-compose up --build` also does this):**
-    ```bash
-    docker build -t asentrx .
-    ```
+2.  **Create the `.env` file** in the project's root directory as described above. Docker Compose will use this to inject environment variables into the container.
+3.  **(Optional, but recommended) Create/Review `.dockerignore` file:**
+    Ensure this file excludes unnecessary files (like `.git`, `venv`, `__pycache__`, local `.env` if mounted differently) from the Docker build context.
 
 ## Starting the Application
 
-### Starting the Main Service (`main.py`)
+The main application (`main.py`) is designed to run continuously.
 
-The main service (`main.py`) is designed to run continuously, fetching and analyzing statuses.
+### With Docker Compose (Recommended for production-like environments)
 
-#### With Docker Compose (Recommended)
-
-This is the easiest way to manage the service and its dependencies (like volumes for logs).
-
-1.  **Ensure your `docker-compose.yml` file is configured.**
-    An example `docker-compose.yml` might look like this:
-    ```yaml
-    version: '3.8'
-
-    services:
-      asentrx_app:
-        build: .
-        container_name: asentrx_service
-        restart: unless-stopped
-        env_file:
-          - .env # Loads environment variables from the .env file
-        volumes:
-          - ./logs:/app/logs # Mounts the local logs folder into the container
-          # Optional: If write_raw_status_to_file.py is used within Docker
-          # and its output should persist on the host:
-          - ./data:/app/data
-        # Ensures Python doesn't buffer output, for more direct logs
-        environment:
-          - PYTHONUNBUFFERED=1
-    ```
-    *Adjust `LOG_FILE_NAME` in your `.env` file, e.g., `LOG_FILE_NAME="logs/asentrx_app.log"`, so logs end up in the mounted volume.*
-    *If you plan to run `write_raw_status_to_file.py` via Docker and want the output file (e.g., `raw_statuses_dump_trump_2025.txt`) to be saved on the host system, set `OUTPUT_FILENAME_RAW_STATUSES` in your `.env` to something like `data/raw_statuses_dump_trump_2025.txt` and ensure the `data` volume is mounted.*
-
-2.  **Start the service:**
+1.  **Build and start the service:**
     ```bash
     sudo docker compose up --build -d
     ```
-    The `-d` parameter starts the service in detached mode (in the background). Without `-d`, you'll see the logs directly.
+    The `-d` flag runs the service in detached mode. Omit it to see logs directly.
 
-3.  **View logs:**
+2.  **View logs:**
+    (Primarily for console logs if Logfire is also used)
     ```bash
     sudo docker compose logs -f asentrx_app
     ```
+    For detailed analysis, check your Logfire dashboard.
 
-4.  **Stop the service:**
+3.  **Stop the service:**
     ```bash
     sudo docker compose down
     ```
 
-#### Manually (without Docker)
+### Manually (using Poetry, for local development)
 
-1.  **Ensure you have completed the manual installation and created the `.env` file.**
-2.  **Start the main script:**
+1.  **Ensure you have completed the Poetry installation and `.env` file setup.**
+2.  **Activate the Poetry shell (optional but recommended):**
     ```bash
+    poetry shell
+    ```
+    This activates the virtual environment. If you skip this, preface commands with `poetry run`.
+
+3.  **Start the main script:**
+    ```bash
+    # If inside poetry shell
     python main.py
+    # Or, if not in poetry shell
+    poetry run python main.py
     ```
-    The application will start and begin fetching statuses according to the configuration in `.env`. Logs will be written to the console and/or the log file.
+    The application will start, and logs will be sent to the console and Logfire.
 
-### Running Utility Scripts
-
-These scripts serve specific, mostly one-off tasks.
-
-#### 1. `write_raw_status_to_file.py`: Fetch Statuses and Save to File
-
-This script fetches statuses from Truth Social and saves them.
-
-*   **Configuration:**
-    *   Adjust the constants `TARGET_USERNAME`, `SINCE_ID_FILTER`, `OUTPUT_FILENAME_RAW_STATUSES`, `API_VERBOSE_OUTPUT` directly in the `write_raw_status_to_file.py` script if you run it manually (without Docker or without using `main.py`'s environment variables).
-    *   If you want to run this script within the Docker context (e.g., using `docker-compose run`) and utilize environment variables from `.env`, you would need to adapt the script to read these variables (similar to `main.py`). By default, it reads its own constants.
-
-*   **Execution (manual):**
-    ```bash
-    python write_raw_status_to_file.py
-    ```
-    This will create (or overwrite) the file specified in `OUTPUT_FILENAME_RAW_STATUSES` within the script.
-
-*   **Execution (with Docker Compose, if the script has been adapted to use `.env` or you want to use its default values):**
-    Ensure `OUTPUT_FILENAME_RAW_STATUSES` writes to a mounted volume if you want the file to persist on the host (see `docker-compose.yml` example with `/app/data`).
-    ```bash
-    docker-compose run --rm asentrx_app python write_raw_status_to_file.py
-    ```
-
-#### 2. `read_content_from_file.py`: Read and Process Saved Statuses
-
-This script reads the previously saved file, parses each status, and prints information.
-
-*   **Configuration:** Adjust `INPUT_FILENAME` directly in the `read_content_from_file.py` script.
-*   **Execution (manual):**
-    ```bash
-    python read_content_from_file.py
-    ```
-*   **Execution (with Docker Compose):**
-    Ensure `INPUT_FILENAME` reads from a mounted volume.
-    ```bash
-    docker-compose run --rm asentrx_app python read_content_from_file.py
-    ```
-
-#### 3. `analyze_content_with_agent.py`: Test Direct Content Analysis
-
-Tests the `ContentAnalyzer` with sample text.
-
-*   **Configuration:** Requires `.env` variables for the AI model provider (e.g., `MODEL`, `GROQ_API_KEY`).
-*   **Execution (manual):**
-    ```bash
-    python analyze_content_with_agent.py
-    ```
-*   **Execution (with Docker Compose):**
-    ```bash
-    docker-compose run --rm asentrx_app python ai/analyze_content_with_agent.py
-    ```
-
-#### 4. `bitfinex_rest.py`: Bitfinex API Interaction
-
-Demonstrates interaction with the Bitfinex API.
-
-*   **Configuration:** Requires `BFX_API_KEY` and `BFX_API_SECRET` in the `.env` file.
-*   **Execution (manual):**
-    ```bash
-    python bitfinex_rest.py
-    ```
-*   **Execution (with Docker Compose):**
-    ```bash
-    docker-compose run --rm asentrx_app python bitfinex_rest.py
-    ```
-
-#### 5. `pull_status.py`: Simple Status Fetch Test
-
-A simple example script that fetches statuses directly from Truth Social and prints them to the console.
-
-*   **Configuration:** Parameters are set directly in the script.
-*   **Execution (manual):**
-    ```bash
-    python pull_status.py
-    ```
-*   **Execution (with Docker Compose):**
-    ```bash
-    docker-compose run --rm asentrx_app python pull_status.py
-    ```
 
 ## Logging
 
-The application uses Python's `logging` module. Configuration is done via environment variables read by `utils/logger_config.py` (see `.env` example).
-When using Docker, ensure the log folder/file is mounted to a volume to persist logs on the host system.
+*   **Standard Logging**: The application uses Python's `logging` module for console output, configured via `utils/logger_config.py`. The level is set by `LOG_LEVEL_CONSOLE` in `.env`.
+*   **Logfire**: This is the primary tool for advanced logging, observability, and tracing, especially for LLM interactions within `pydantic-ai`.
+    *   Configure `LOGFIRE_TOKEN` and `LOGFIRE_ENVIRONMENT` in your `.env` file.
+    *   Logfire automatically instruments Pydantic and `pydantic-ai`.
+    *   View detailed logs, traces, and analytics on your Logfire dashboard.
+
+## SMS Notifications
+
+*   The application can send SMS notifications for critical events (e.g., trade executions) via Twilio.
+*   Enable this feature by setting `SMS_NOTIFICATIONS_ENABLED="True"` in `.env`.
+*   Configure Twilio credentials (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`) and phone numbers (`TWILIO_FROM_NUMBER`, `TWILIO_TO_NUMBER`).
+
+## Deployment to Fly.io
+
+*   The application is designed to be deployed as a Docker container on [Fly.io](https://fly.io/).
+*   The `fly.toml` configuration file defines how the application is built and run on the platform.
+*   **Environment Variables on Fly.io**: Sensitive information (API keys, tokens from your `.env` file) must be set as "secrets" in your Fly.io app settings:
+    ```bash
+    fly secrets set VAR_NAME="value" -a your-fly-app-name
+    ```
+    Repeat for all necessary variables from `.env` file.
+*   **GitHub Actions for CI/CD**:
+    *   A GitHub Actions workflow (e.g., in `.github/workflows/fly-deploy.yml`) is set up to:
+        1.  Trigger on pushes to the `master` branch.
+        2.  Build the Docker image.
+        3.  Push the image to a container registry (Fly.io has its own).
+        4.  Deploy the new image to your Fly.io application using the `flyctl` command-line tool.
+    *   The GitHub Actions workflow require a `FLY_API_TOKEN` secret to be configured in your GitHub repository settings for authentication with Fly.io.
+
+## Contributing
+
+Contributions are welcome! Please follow these general steps:
+1.  Fork the repository.
+2.  Create a new branch for your feature or bug fix.
+3.  Make your changes.
+4.  Ensure your code follows project conventions and passes any linters/tests.
+5.  Install dependencies with `poetry install`.
+6.  Test your changes thoroughly.
+7.  Submit a pull request with a clear description of your changes.
