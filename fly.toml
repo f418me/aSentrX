@@ -1,0 +1,67 @@
+# fly.toml app configuration file generated for asentrx on 2025-06-01T06:38:28+02:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'asentrx'
+primary_region = 'lax'
+
+[build]
+
+[env]
+  PROD_EXECUTION= 'False'
+
+  TARGET_USERNAME="realDonaldTrump"
+  FETCH_INTERVAL_SECONDS="60"
+  INITIAL_SINCE_ID="114575866799232685"
+
+  LOG_LEVEL_CONSOLE="DEBUG"
+
+  LOGFIRE_ENVIRONMENT='fly'
+  LOGFIRE_SERVICE_NAME='asentrx'
+
+  API_VERBOSE_OUTPUT="False"
+
+  MODEL= 'google-gla:gemini-2.5-flash-preview-04-17'
+
+  TWILIO_FROM_NUMBER= '+13204336759'
+  TWILIO_TO_NUMBER= '+41796754690'
+
+  ORDER_AMOUNT_BUY_HIGH_CONF = '0.01'
+  ORDER_AMOUNT_SHORT_HIGH_CONF = '-0.01'
+  ORDER_AMOUNT_BUY_MED_CONF = '0.0005'
+  ORDER_AMOUNT_SHORT_MED_CONF = '-0.0005'
+
+  LEVERAGE_BUY_HIGH_CONF = '20'
+  LEVERAGE_SHORT_HIGH_CONF = '20'
+  LEVERAGE_BUY_MED_CONF = '10'
+  LEVERAGE_SHORT_MED_CONF = '10'
+
+  LIMIT_OFFSET_BUY = '0.01'
+  LIMIT_OFFSET_SHORT = '0.01'
+
+  CONFIDENCE_THRESHOLD_HIGH = '0.95'
+  CONFIDENCE_THRESHOLD_MED = '0.9'
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
+
+[[services]]
+  protocol = ''
+  internal_port = 0
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+  max_machines_running = 1
+  ports = []
+  processes = ['app']
+
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1

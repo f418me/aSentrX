@@ -1,12 +1,8 @@
-import logging
 import os
 import logfire
+import logging
 
-# These are read when the module is imported, but configure_logging() applies them.
-LOG_FILE_NAME_ENV = os.getenv("LOG_FILE_NAME", "asentrx_default.log")
-LOG_LEVEL_FILE_STR_ENV = os.getenv("LOG_LEVEL_FILE", "INFO")
-LOG_LEVEL_CONSOLE_STR_ENV = os.getenv("LOG_LEVEL_CONSOLE", "DEBUG")
-CONSOLE_LOGGING_ENABLED_ENV = os.getenv("CONSOLE_LOGGING_ENABLED", "True").lower() in ("true", "1", "t", "yes")
+LOG_LEVEL_CONSOLE_STR_ENV = os.getenv("LOG_LEVEL_CONSOLE", "INFO") # Default to INFO for console
 
 # --- Application Logger Name ---
 # This constant defines the base name for loggers within this application.
@@ -38,94 +34,69 @@ _logging_configured = False # Module-level flag to ensure configuration happens 
 
 def configure_logging():
     """
-    Configures the application's logging system.
+    Configures the application's logging system for console output.
     This function should be called once at the application's startup.
-    It sets up handlers and formatters on the application's base logger
+    It sets up a console handler on the application's base logger
     (defined by APP_LOGGER_NAME).
 
     Loggers obtained via logging.getLogger() in other modules will inherit this
-    configuration if their names are part of the APP_LOGGER_NAME hierarchy
-    (e.g., logging.getLogger(f"{APP_LOGGER_NAME}.submodule")).
-
-    This is analogous to calling logging.basicConfig() but provides more control
-    and reads configuration from environment variables (via .env).
+    configuration if their names are part of the APP_LOGGER_NAME hierarchy.
     """
     global _logging_configured
     if _logging_configured:
-        # If called again, we can log a debug message or just return.
-        # Re-configuring might be okay if handlers are cleared, but generally, it's once.
         # logging.getLogger(APP_LOGGER_NAME).debug("Logging system already configured. Skipping.")
         return
 
-    # Get the application's base logger.
-    # Configuring this logger (and its handlers) will affect all child loggers
-    # unless they have specific overriding configurations (which is less common for basic setup).
     app_base_logger = logging.getLogger(APP_LOGGER_NAME)
 
-    # Set the level for the logger itself.
-    # This determines the lowest severity of messages that the logger will process.
-    # Handlers attached to this logger will then filter messages based on their own levels.
-    # Setting it to DEBUG here means the logger will pass all messages from DEBUG upwards
-    # to its handlers.
+    # Set the level for the logger itself to DEBUG.
+    # This allows handlers to filter messages based on their own more specific levels.
+    # If this was INFO, a console handler set to DEBUG would never receive DEBUG messages.
     app_base_logger.setLevel(logging.DEBUG)
 
-    # Clear any existing handlers from this logger to ensure a clean setup,
-    # especially if this function could be called in a context where the logger
-    # might have been manipulated elsewhere (e.g., by third-party libraries, though rare for named loggers).
     if app_base_logger.hasHandlers():
         app_base_logger.handlers.clear()
 
-    # Define a common formatter for all handlers.
-    # See LogRecord attributes in Python docs for available fields.
     formatter = logging.Formatter(
         '%(asctime)s - %(name)s - %(levelname)s - %(module)s:%(lineno)d - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S' # Example date format
+        datefmt='%Y-%m-%d %H:%M:%S'
     )
 
-    # --- File Handler Setup ---
+    # --- Console Handler Setup (Always Enabled) ---
     try:
-        file_log_level = get_numeric_loglevel(LOG_LEVEL_FILE_STR_ENV)
+        console_log_level_num = get_numeric_loglevel(LOG_LEVEL_CONSOLE_STR_ENV)
     except ValueError as e:
-        # If logger config is invalid, print to stderr and raise to stop app.
-        print(f"CRITICAL ERROR: Invalid LOG_LEVEL_FILE ('{LOG_LEVEL_FILE_STR_ENV}'): {e}. "
+        # Critical error if console log level is invalid. Print and raise.
+        print(f"CRITICAL ERROR: Invalid LOG_LEVEL_CONSOLE ('{LOG_LEVEL_CONSOLE_STR_ENV}'): {e}. "
               f"Please check your .env file or environment variables.")
-        raise # Re-raise to halt execution if logging can't be set up.
+        raise # Re-raise to halt execution
 
-    fh = logging.FileHandler(LOG_FILE_NAME_ENV, encoding='utf-8')
-    fh.setLevel(file_log_level) # Set the level for this specific handler.
-    fh.setFormatter(formatter)
-    app_base_logger.addHandler(fh)
+    ch = logging.StreamHandler() # Defaults to sys.stderr, which is fine. For stdout: logging.StreamHandler(sys.stdout)
+    ch.setLevel(console_log_level_num)
+    ch.setFormatter(formatter)
+    app_base_logger.addHandler(ch)
 
-    console_log_level_num = None
-    if CONSOLE_LOGGING_ENABLED_ENV:
-        try:
-            console_log_level_num = get_numeric_loglevel(LOG_LEVEL_CONSOLE_STR_ENV)
-        except ValueError as e:
-            print(f"CRITICAL ERROR: Invalid LOG_LEVEL_CONSOLE ('{LOG_LEVEL_CONSOLE_STR_ENV}'): {e}. "
-                  f"Please check your .env file or environment variables.")
-            raise
+    # --- Logfire Setup ---
+    # Ensure LOGFIRE_TOKEN and LOGFIRE_ENVIRONMENT are set in your environment.
+    # LOGFIRE_ENVIRONMENT might be 'fly', 'local', 'staging', 'production' etc.
+    logfire_token = os.getenv("LOGFIRE_TOKEN")
+    logfire_env = os.getenv("LOGFIRE_ENVIRONMENT", "local") # Default to 'local' if not set
 
-        ch = logging.StreamHandler()
-        ch.setLevel(console_log_level_num)
-        ch.setFormatter(formatter)
-        app_base_logger.addHandler(ch)
+    if logfire_token:
+        logfire.configure(token=logfire_token, environment=logfire_env)
+        logfire.instrument_pydantic_ai()
 
-    # --- Logfire  Setup ---
-    logfire.configure(token=os.getenv("LOGFIRE_TOKEN"),environment=os.getenv("LOGFIRE_ENVIRONMENT", "local"))
-    logfire.instrument_pydantic_ai()
+    else:
+        # Log a warning if Logfire token is not found, so it's clear it's not active.
+        app_base_logger.warning("LOGFIRE_TOKEN not found. Logfire will not be configured.")
+
 
     _logging_configured = True
 
-    # Use a child logger to log confirmation.
     config_logger = logging.getLogger(f"{APP_LOGGER_NAME}.config")
-
-    console_status_msg = "Disabled"
-    if CONSOLE_LOGGING_ENABLED_ENV and console_log_level_num is not None:
-        console_status_msg = f"Enabled (Level: {logging.getLevelName(console_log_level_num)})"
-
     config_logger.info(
         f"Logging for '{APP_LOGGER_NAME}' initialized. "
         f"Base logger level: {logging.getLevelName(app_base_logger.getEffectiveLevel())}. "
-        f"File Handler: '{LOG_FILE_NAME_ENV}' (Level: {logging.getLevelName(file_log_level)}). "
-        f"Console Handler: {console_status_msg}."
+        f"Console Handler: Level {logging.getLevelName(console_log_level_num)}."
+        f" Logfire configured: {'Yes' if logfire_token else 'No (LOGFIRE_TOKEN not set)'} (Env: {logfire_env})."
     )
