@@ -9,7 +9,7 @@ primary_region = 'lax'
 [build]
 
 [env]
-  PROD_EXECUTION= 'False'
+  PROD_EXECUTION= 'True'
 
   TARGET_USERNAME="realDonaldTrump"
   FETCH_INTERVAL_SECONDS="60"
@@ -17,7 +17,7 @@ primary_region = 'lax'
 
   LOG_LEVEL_CONSOLE="DEBUG"
 
-  LOGFIRE_ENVIRONMENT='fly'
+  LOGFIRE_ENVIRONMENT='prod'
   LOGFIRE_SERVICE_NAME='asentrx'
 
   API_VERBOSE_OUTPUT="False"
