@@ -1,13 +1,28 @@
 import os
 import logfire
 import logging
+import sentry_sdk
 
 LOG_LEVEL_CONSOLE_STR_ENV = os.getenv("LOG_LEVEL_CONSOLE", "INFO") # Default to INFO for console
+
+PROD_EXECUTION_ENV = os.getenv("PROD_EXECUTION", "False").lower() == "true" #
 
 # --- Application Logger Name ---
 # This constant defines the base name for loggers within this application.
 # Modules can then get child loggers, e.g., logging.getLogger(f"{APP_LOGGER_NAME}.parser")
 APP_LOGGER_NAME = "aSentrX"
+
+
+if PROD_EXECUTION_ENV:
+    sentry_dsn = os.getenv('SENTRY_DSN')
+    if sentry_dsn:
+        sentry_sdk.init(
+            dsn=sentry_dsn,
+            # Add data like request headers and IP for users,
+            # see https://docs.sentry.io/platforms/python/data-management/data-collected/ for more info
+            send_default_pii=True,
+        )
+
 
 def get_numeric_loglevel(loglevel_str: str) -> int:
     """
