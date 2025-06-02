@@ -18,6 +18,7 @@ bitfinex-api-py = {git = "https://github.com/f418me/bitfinex-api-py.git"}
 beautifulsoup4 = "4.13.4"
 pydantic = "2.11.5"
 pydantic-ai ="0.2.12"
+sentry-sdk = "^2.29.1"
 
 
 [build-system]
