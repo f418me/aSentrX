@@ -20,21 +20,38 @@ SMS_NOTIFICATIONS_ENABLED = os.getenv("SMS_NOTIFICATIONS_ENABLED", "False").lowe
 
 TRADE_SYMBOL = os.getenv("TRADE_SYMBOL", "tBTCF0:USTF0")
 
-# --- ORDER AMOUNTS (Positive for BUY/LONG, Negative for SHORT) ---
+# --- GENERIC ORDER AMOUNTS (Positive for BUY/LONG, Negative for SHORT) ---
 ORDER_AMOUNT_BUY_HIGH_CONF = float(os.getenv("ORDER_AMOUNT_BUY_HIGH_CONF", "0.001"))
 ORDER_AMOUNT_SHORT_HIGH_CONF = float(os.getenv("ORDER_AMOUNT_SHORT_HIGH_CONF", "-0.001"))
 ORDER_AMOUNT_BUY_MED_CONF = float(os.getenv("ORDER_AMOUNT_BUY_MED_CONF", "0.0005"))
 ORDER_AMOUNT_SHORT_MED_CONF = float(os.getenv("ORDER_AMOUNT_SHORT_MED_CONF", "-0.0005"))
 
-# --- LEVERAGE SETTINGS ---
+# --- GENERIC LEVERAGE SETTINGS ---
 LEVERAGE_BUY_HIGH_CONF = int(os.getenv("LEVERAGE_BUY_HIGH_CONF", "10"))
 LEVERAGE_SHORT_HIGH_CONF = int(os.getenv("LEVERAGE_SHORT_HIGH_CONF", "10"))
 LEVERAGE_BUY_MED_CONF = int(os.getenv("LEVERAGE_BUY_MED_CONF", "5"))
 LEVERAGE_SHORT_MED_CONF = int(os.getenv("LEVERAGE_SHORT_MED_CONF", "5"))
 
-# --- CONFIDENCE THRESHOLDS FOR TRADING ---
+# --- BITCOIN SPECIFIC ORDER AMOUNTS (Positive for BUY/LONG, Negative for SHORT) ---
+# These will be used when the AI topic classification is "bitcoin"
+ORDER_AMOUNT_BITCOIN_BUY_HIGH_CONF = float(os.getenv("ORDER_AMOUNT_BITCOIN_BUY_HIGH_CONF", "0.0015")) # e.g., slightly higher
+ORDER_AMOUNT_BITCOIN_SHORT_HIGH_CONF = float(os.getenv("ORDER_AMOUNT_BITCOIN_SHORT_HIGH_CONF", "-0.0015"))
+ORDER_AMOUNT_BITCOIN_BUY_MED_CONF = float(os.getenv("ORDER_AMOUNT_BITCOIN_BUY_MED_CONF", "0.00075"))
+ORDER_AMOUNT_BITCOIN_SHORT_MED_CONF = float(os.getenv("ORDER_AMOUNT_BITCOIN_SHORT_MED_CONF", "-0.00075"))
+
+# --- BITCOIN SPECIFIC LEVERAGE SETTINGS ---
+LEVERAGE_BITCOIN_BUY_HIGH_CONF = int(os.getenv("LEVERAGE_BITCOIN_BUY_HIGH_CONF", "15")) # e.g., slightly higher
+LEVERAGE_BITCOIN_SHORT_HIGH_CONF = int(os.getenv("LEVERAGE_BITCOIN_SHORT_HIGH_CONF", "15"))
+LEVERAGE_BITCOIN_BUY_MED_CONF = int(os.getenv("LEVERAGE_BITCOIN_BUY_MED_CONF", "7"))
+LEVERAGE_BITCOIN_SHORT_MED_CONF = int(os.getenv("LEVERAGE_BITCOIN_SHORT_MED_CONF", "7"))
+
+# --- GENERIC CONFIDENCE THRESHOLDS FOR TRADING ---
 CONFIDENCE_THRESHOLD_HIGH = float(os.getenv("CONFIDENCE_THRESHOLD_HIGH", "0.95"))
 CONFIDENCE_THRESHOLD_MED = float(os.getenv("CONFIDENCE_THRESHOLD_MED", "0.9"))
+
+# --- BITCOIN SPECIFIC CONFIDENCE THRESHOLDS FOR TRADING ---
+CONFIDENCE_THRESHOLD_BITCOIN_HIGH = float(os.getenv("CONFIDENCE_THRESHOLD_BITCOIN_HIGH", "0.93")) # e.g., slightly lower to trigger more often
+CONFIDENCE_THRESHOLD_BITCOIN_MED = float(os.getenv("CONFIDENCE_THRESHOLD_BITCOIN_MED", "0.88"))
 
 # Trader class applies: BUY_LIMIT = PRICE * (1 + OFFSET), SHORT_LIMIT = PRICE * (1 - OFFSET)
 LIMIT_OFFSET_BUY = float(os.getenv("LIMIT_OFFSET_BUY", "0.005"))
@@ -131,13 +148,25 @@ class TrueSocial:
         logger.debug(f"Instance configuration - Fetch interval: {fetch_interval_seconds}s. "
                      f"Truthbrush API Verbose: {self.api_verbose_output}.")
         logger.info(f"Trading Configuration - TRADE_SYMBOL: {TRADE_SYMBOL}")
+
         logger.info(
-            f"Order Amounts - BUY_HIGH_CONF: {ORDER_AMOUNT_BUY_HIGH_CONF}, SHORT_HIGH_CONF: {ORDER_AMOUNT_SHORT_HIGH_CONF}, "
+            f"Generic Order Amounts - BUY_HIGH_CONF: {ORDER_AMOUNT_BUY_HIGH_CONF}, SHORT_HIGH_CONF: {ORDER_AMOUNT_SHORT_HIGH_CONF}, "
             f"BUY_MED_CONF: {ORDER_AMOUNT_BUY_MED_CONF}, SHORT_MED_CONF: {ORDER_AMOUNT_SHORT_MED_CONF}")
         logger.info(
-            f"Leverage Settings - BUY_HIGH_CONF: {LEVERAGE_BUY_HIGH_CONF}, SHORT_HIGH_CONF: {LEVERAGE_SHORT_HIGH_CONF}, "
+            f"Generic Leverage Settings - BUY_HIGH_CONF: {LEVERAGE_BUY_HIGH_CONF}, SHORT_HIGH_CONF: {LEVERAGE_SHORT_HIGH_CONF}, "
             f"BUY_MED_CONF: {LEVERAGE_BUY_MED_CONF}, SHORT_MED_CONF: {LEVERAGE_SHORT_MED_CONF}")
-        logger.info(f"Confidence Thresholds - HIGH: {CONFIDENCE_THRESHOLD_HIGH}, MED: {CONFIDENCE_THRESHOLD_MED}")
+        logger.info(
+            f"Generic Confidence Thresholds - HIGH: {CONFIDENCE_THRESHOLD_HIGH}, MED: {CONFIDENCE_THRESHOLD_MED}")
+
+        logger.info(
+            f"Bitcoin Specific Order Amounts - BUY_HIGH_CONF: {ORDER_AMOUNT_BITCOIN_BUY_HIGH_CONF}, SHORT_HIGH_CONF: {ORDER_AMOUNT_BITCOIN_SHORT_HIGH_CONF}, "
+            f"BUY_MED_CONF: {ORDER_AMOUNT_BITCOIN_BUY_MED_CONF}, SHORT_MED_CONF: {ORDER_AMOUNT_BITCOIN_SHORT_MED_CONF}")
+        logger.info(
+            f"Bitcoin Specific Leverage Settings - BUY_HIGH_CONF: {LEVERAGE_BITCOIN_BUY_HIGH_CONF}, SHORT_HIGH_CONF: {LEVERAGE_BITCOIN_SHORT_HIGH_CONF}, "
+            f"BUY_MED_CONF: {LEVERAGE_BITCOIN_BUY_MED_CONF}, SHORT_MED_CONF: {LEVERAGE_BITCOIN_SHORT_MED_CONF}")
+        logger.info(
+            f"Bitcoin Specific Confidence Thresholds - HIGH: {CONFIDENCE_THRESHOLD_BITCOIN_HIGH}, MED: {CONFIDENCE_THRESHOLD_BITCOIN_MED}")
+
         logger.info(f"Limit Offsets - BUY: {LIMIT_OFFSET_BUY * 100:.2f}%, SHORT: {LIMIT_OFFSET_SHORT * 100:.2f}%")
 
     def _execute_trade_logic(self, analysis_result, status_id_for_log: str):
@@ -179,24 +208,54 @@ class TrueSocial:
         order_to_execute = None
         sms_message_body = None
 
+        # Determine which set of settings to use based on topic
+        if topic_lower == "bitcoin":
+            logger.debug(f"{log_prefix} Using Bitcoin-specific trade settings.")
+            amount_buy_high = ORDER_AMOUNT_BITCOIN_BUY_HIGH_CONF
+            amount_short_high = ORDER_AMOUNT_BITCOIN_SHORT_HIGH_CONF
+            amount_buy_med = ORDER_AMOUNT_BITCOIN_BUY_MED_CONF
+            amount_short_med = ORDER_AMOUNT_BITCOIN_SHORT_MED_CONF
+            leverage_buy_high = LEVERAGE_BITCOIN_BUY_HIGH_CONF
+            leverage_short_high = LEVERAGE_BITCOIN_SHORT_HIGH_CONF
+            leverage_buy_med = LEVERAGE_BITCOIN_BUY_MED_CONF
+            leverage_short_med = LEVERAGE_BITCOIN_SHORT_MED_CONF
+            # NEW: Bitcoin-specific confidence thresholds
+            confidence_threshold_high_current = CONFIDENCE_THRESHOLD_BITCOIN_HIGH
+            confidence_threshold_med_current = CONFIDENCE_THRESHOLD_BITCOIN_MED
+        else: # For "market", "tariffs", or any other relevant non-bitcoin topic
+            logger.debug(f"{log_prefix} Using generic trade settings.")
+            amount_buy_high = ORDER_AMOUNT_BUY_HIGH_CONF
+            amount_short_high = ORDER_AMOUNT_SHORT_HIGH_CONF
+            amount_buy_med = ORDER_AMOUNT_BUY_MED_CONF
+            amount_short_med = ORDER_AMOUNT_SHORT_MED_CONF
+            leverage_buy_high = LEVERAGE_BUY_HIGH_CONF
+            leverage_short_high = LEVERAGE_SHORT_HIGH_CONF
+            leverage_buy_med = LEVERAGE_BUY_MED_CONF
+            leverage_short_med = LEVERAGE_SHORT_MED_CONF
+            # NEW: Generic confidence thresholds
+            confidence_threshold_high_current = CONFIDENCE_THRESHOLD_HIGH
+            confidence_threshold_med_current = CONFIDENCE_THRESHOLD_MED
+
+
         # Decision logic for BUY (LONG) or SHORT
         # "up" direction from AI means we expect price to rise -> BUY/LONG
         # "down" direction from AI means we expect price to fall -> SHORT
         if direction_lower == "up":  # Potential BUY/LONG signal
             trade_action_desc_prefix = "BUY"
-            if confidence >= CONFIDENCE_THRESHOLD_HIGH:
+            # Use current (topic-specific) confidence thresholds
+            if confidence >= confidence_threshold_high_current:
                 desc_suffix = "High-Confidence UP"
-                current_amount = ORDER_AMOUNT_BUY_HIGH_CONF
-                current_leverage = LEVERAGE_BUY_HIGH_CONF
+                current_amount = amount_buy_high
+                current_leverage = leverage_buy_high
                 limit_offset = LIMIT_OFFSET_BUY
-            elif confidence >= CONFIDENCE_THRESHOLD_MED:
+            elif confidence >= confidence_threshold_med_current:
                 desc_suffix = "Medium-Confidence UP"
-                current_amount = ORDER_AMOUNT_BUY_MED_CONF
-                current_leverage = LEVERAGE_BUY_MED_CONF
+                current_amount = amount_buy_med
+                current_leverage = leverage_buy_med
                 limit_offset = LIMIT_OFFSET_BUY
             else:
                 logger.info(
-                    f"{log_prefix} Predicted UP, but confidence ({confidence:.2f}) is below {CONFIDENCE_THRESHOLD_MED} for a BUY. No action.")
+                    f"{log_prefix} Predicted UP, but confidence ({confidence:.2f}) is below {confidence_threshold_med_current} for a BUY. No action.")
                 return
 
             if current_amount is not None and current_leverage is not None:
@@ -214,19 +273,20 @@ class TrueSocial:
 
         elif direction_lower == "down":
             trade_action_desc_prefix = "SHORT"
-            if confidence >= CONFIDENCE_THRESHOLD_HIGH:
+            # Use current (topic-specific) confidence thresholds
+            if confidence >= confidence_threshold_high_current:
                 desc_suffix = "High-Confidence DOWN"
-                current_amount = ORDER_AMOUNT_SHORT_HIGH_CONF
-                current_leverage = LEVERAGE_SHORT_HIGH_CONF
+                current_amount = amount_short_high
+                current_leverage = leverage_short_high
                 limit_offset = LIMIT_OFFSET_SHORT
-            elif confidence >= CONFIDENCE_THRESHOLD_MED:
+            elif confidence >= confidence_threshold_med_current:
                 desc_suffix = "Medium-Confidence DOWN"
-                current_amount = ORDER_AMOUNT_SHORT_MED_CONF
-                current_leverage = LEVERAGE_SHORT_MED_CONF
+                current_amount = amount_short_med
+                current_leverage = leverage_short_med
                 limit_offset = LIMIT_OFFSET_SHORT
             else:
                 logger.info(
-                    f"{log_prefix} Predicted DOWN, but confidence ({confidence:.2f}) is below {CONFIDENCE_THRESHOLD_MED} for a SHORT. No action.")
+                    f"{log_prefix} Predicted DOWN, but confidence ({confidence:.2f}) is below {confidence_threshold_med_current} for a SHORT. No action.")
                 return
 
             if current_amount is not None and current_leverage is not None:
@@ -400,5 +460,3 @@ class TrueSocial:
                             exc_info=True)
         finally:
             logger.info(f"TrueSocial run loop for '{self.username}' has finished.")
-
-
