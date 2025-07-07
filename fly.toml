@@ -24,10 +24,10 @@ primary_region = 'lax'
 
   # Generic Trading Settings (applied when topic is 'market', 'tariffs', etc.)
   # Order Amounts (Positive for BUY/LONG, Negative for SHORT)
-  ORDER_AMOUNT_BUY_HIGH_CONF='0.5'
-  ORDER_AMOUNT_SHORT_HIGH_CONF='-0.5'
-  ORDER_AMOUNT_BUY_MED_CONF='0.2'
-  ORDER_AMOUNT_SHORT_MED_CONF='-0.2'
+  ORDER_AMOUNT_BUY_HIGH_CONF='0.05'
+  ORDER_AMOUNT_SHORT_HIGH_CONF='-0.05'
+  ORDER_AMOUNT_BUY_MED_CONF='0.02'
+  ORDER_AMOUNT_SHORT_MED_CONF='-0.02'
 
   # Leverage Settings
   LEVERAGE_BUY_HIGH_CONF='50'
@@ -36,8 +36,8 @@ primary_region = 'lax'
   LEVERAGE_SHORT_MED_CONF='20'
 
   # Confidence Thresholds
-  CONFIDENCE_THRESHOLD_HIGH='0.95'
-  CONFIDENCE_THRESHOLD_MED='0.90'
+  CONFIDENCE_THRESHOLD_HIGH='0.98'
+  CONFIDENCE_THRESHOLD_MED='0.95'
 
   # Bitcoin Specific Trading Settings (applied when topic is 'bitcoin')
   # Order Amounts (Positive for BUY/LONG, Negative for SHORT)
