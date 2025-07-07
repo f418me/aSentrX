@@ -10,7 +10,7 @@ primary_region = 'lax'
 
 [env]
   API_VERBOSE_OUTPUT = 'False'
-  FETCH_INTERVAL_SECONDS = '60'
+  FETCH_INTERVAL_SECONDS = '30'
   INITIAL_SINCE_ID = '114616421679095002'
   LOGFIRE_ENVIRONMENT = 'prod'
   LOGFIRE_SERVICE_NAME = 'asentrx'
@@ -24,20 +24,20 @@ primary_region = 'lax'
 
   # Generic Trading Settings (applied when topic is 'market', 'tariffs', etc.)
   # Order Amounts (Positive for BUY/LONG, Negative for SHORT)
-  ORDER_AMOUNT_BUY_HIGH_CONF='0.001'
-  ORDER_AMOUNT_SHORT_HIGH_CONF='-0.001'
-  ORDER_AMOUNT_BUY_MED_CONF='0.0005'
-  ORDER_AMOUNT_SHORT_MED_CONF='-0.0005'
+  ORDER_AMOUNT_BUY_HIGH_CONF='0.5'
+  ORDER_AMOUNT_SHORT_HIGH_CONF='-0.5'
+  ORDER_AMOUNT_BUY_MED_CONF='0.2'
+  ORDER_AMOUNT_SHORT_MED_CONF='-0.2'
 
   # Leverage Settings
-  LEVERAGE_BUY_HIGH_CONF='10'
-  LEVERAGE_SHORT_HIGH_CONF='10'
-  LEVERAGE_BUY_MED_CONF='5'
-  LEVERAGE_SHORT_MED_CONF='5'
+  LEVERAGE_BUY_HIGH_CONF='50'
+  LEVERAGE_SHORT_HIGH_CONF='50'
+  LEVERAGE_BUY_MED_CONF='20'
+  LEVERAGE_SHORT_MED_CONF='20'
 
   # Confidence Thresholds
   CONFIDENCE_THRESHOLD_HIGH='0.95'
-  CONFIDENCE_THRESHOLD_MED='0.9'
+  CONFIDENCE_THRESHOLD_MED='0.90'
 
   # Bitcoin Specific Trading Settings (applied when topic is 'bitcoin')
   # Order Amounts (Positive for BUY/LONG, Negative for SHORT)
