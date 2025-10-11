@@ -4,7 +4,7 @@
 #
 
 app = 'asentrx-prd'
-primary_region = 'lax'
+primary_region = 'phx'
 
 [build]
 
@@ -21,6 +21,10 @@ primary_region = 'lax'
   SMS_NOTIFICATIONS_ENABLED='True'
   TWILIO_FROM_NUMBER = '+13204336759'
   TWILIO_TO_NUMBER = '+41796754690'
+
+  # DECODO PROXY CONFIGURATION
+  DECODO_PROXY_ENABLED='True'
+  DECODO_PROXY_URL='http://gate.decodo.com:7000'
 
   # Generic Trading Settings (applied when topic is 'market', 'tariffs', etc.)
   # Order Amounts (Positive for BUY/LONG, Negative for SHORT)
