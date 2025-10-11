@@ -20,6 +20,12 @@ SMS_NOTIFICATIONS_ENABLED = os.getenv("SMS_NOTIFICATIONS_ENABLED", "False").lowe
 
 TRADE_SYMBOL = os.getenv("TRADE_SYMBOL", "tBTCF0:USTF0")
 
+# --- DECODO PROXY CONFIGURATION ---
+DECODO_PROXY_ENABLED = os.getenv("DECODO_PROXY_ENABLED", "False").lower() == "true"
+DECODO_PROXY_URL = os.getenv("DECODO_PROXY_URL", "")
+DECODO_PROXY_USERNAME = os.getenv("DECODO_PROXY_USERNAME", "")
+DECODO_PROXY_PASSWORD = os.getenv("DECODO_PROXY_PASSWORD", "")
+
 # --- GENERIC ORDER AMOUNTS (Positive for BUY/LONG, Negative for SHORT) ---
 ORDER_AMOUNT_BUY_HIGH_CONF = float(os.getenv("ORDER_AMOUNT_BUY_HIGH_CONF", "0.001"))
 ORDER_AMOUNT_SHORT_HIGH_CONF = float(os.getenv("ORDER_AMOUNT_SHORT_HIGH_CONF", "-0.001"))
@@ -59,9 +65,186 @@ LIMIT_OFFSET_SHORT = float(os.getenv("LIMIT_OFFSET_SHORT", "0.005"))
 
 
 class TrueSocial:
+    def _sanitize_proxy_url(self, url: str) -> str:
+        """
+        Entfernt Credentials (username:password) aus einer Proxy-URL für sicheres Logging.
+        
+        Args:
+            url: Die Proxy-URL die möglicherweise Credentials enthält
+            
+        Returns:
+            Die URL ohne Credentials
+        """
+        import re
+        # Entfernt username:password@ aus URL (z.B. http://user:pass@host:port -> http://host:port)
+        return re.sub(r'://[^:]+:[^@]+@', '://', url)
+
+    def _build_proxy_config(self) -> dict | None:
+        """
+        Erstellt Proxy-Konfiguration für truthbrush Api basierend auf Umgebungsvariablen.
+        
+        Returns:
+            dict mit 'proxies' für requests-Bibliothek, oder None wenn Proxy deaktiviert oder Konfiguration ungültig
+        """
+        if not DECODO_PROXY_ENABLED:
+            logger.debug("Decodo Proxy ist deaktiviert (DECODO_PROXY_ENABLED=False).")
+            return None
+        
+        if not DECODO_PROXY_URL:
+            logger.warning(
+                "Decodo Proxy ist aktiviert (DECODO_PROXY_ENABLED=True), aber DECODO_PROXY_URL ist nicht gesetzt. "
+                "Proxy wird nicht verwendet."
+            )
+            return None
+        
+        # Validiere URL-Format (grundlegende Prüfung)
+        if not DECODO_PROXY_URL.startswith(('http://', 'https://')):
+            logger.error(
+                f"Ungültiges DECODO_PROXY_URL Format: '{self._sanitize_proxy_url(DECODO_PROXY_URL)}'. "
+                "URL muss mit 'http://' oder 'https://' beginnen. Proxy wird nicht verwendet."
+            )
+            return None
+        
+        # Baue Proxy-URL mit Authentifizierung wenn vorhanden
+        proxy_url = DECODO_PROXY_URL
+        if DECODO_PROXY_USERNAME and DECODO_PROXY_PASSWORD:
+            # Füge Credentials in die URL ein
+            # Format: http://username:password@host:port
+            protocol, rest = proxy_url.split('://', 1)
+            proxy_url = f"{protocol}://{DECODO_PROXY_USERNAME}:{DECODO_PROXY_PASSWORD}@{rest}"
+            logger.debug("Proxy-Authentifizierung wird verwendet (Username und Password sind gesetzt).")
+        elif DECODO_PROXY_USERNAME or DECODO_PROXY_PASSWORD:
+            logger.warning(
+                "Nur einer der Proxy-Credentials (Username oder Password) ist gesetzt. "
+                "Beide müssen gesetzt sein für Authentifizierung. Proxy wird ohne Authentifizierung verwendet."
+            )
+        
+        # Erstelle requests-kompatibles Proxy-Dictionary
+        proxy_config = {
+            "proxies": {
+                "http": proxy_url,
+                "https": proxy_url
+            }
+        }
+        
+        logger.debug(
+            f"Proxy-Konfiguration erfolgreich erstellt für URL: {self._sanitize_proxy_url(DECODO_PROXY_URL)}"
+        )
+        
+        return proxy_config
+
     def __init__(self, username: str, fetch_interval_seconds: int, api_verbose_output: bool,
                  initial_since_id: str | None = None):
-        self.api = Api()
+        # Build proxy configuration before Api instantiation
+        proxy_config = self._build_proxy_config()
+        
+        # Initialize truthbrush Api with or without proxy
+        self.api = None
+        proxy_initialization_failed = False
+        
+        if proxy_config:
+            sanitized_url = self._sanitize_proxy_url(DECODO_PROXY_URL)
+            logger.info(f"Initializing truthbrush Api with Decodo Proxy: {sanitized_url}")
+            
+            try:
+                # Try to pass proxy config directly to Api constructor
+                self.api = Api(proxies=proxy_config["proxies"])
+                logger.info(f"Successfully initialized Api with proxy: {sanitized_url}")
+                
+            except TypeError as e:
+                # If Api doesn't accept proxies parameter, configure session after instantiation
+                logger.debug(f"Api constructor doesn't accept proxies parameter: {e}. Configuring session directly.")
+                try:
+                    self.api = Api()
+                    if hasattr(self.api, 'session'):
+                        self.api.session.proxies.update(proxy_config["proxies"])
+                        logger.info(f"Proxy configured on Api session: {sanitized_url}")
+                    else:
+                        logger.warning(
+                            f"Unable to configure proxy on Api instance (no 'session' attribute found). "
+                            f"Falling back to direct connection."
+                        )
+                        proxy_initialization_failed = True
+                except Exception as session_error:
+                    logger.error(
+                        f"Failed to configure proxy on Api session: {session_error}. "
+                        f"Falling back to direct connection.",
+                        exc_info=True
+                    )
+                    logfire.error(
+                        f"Proxy session configuration failed for {sanitized_url}: {session_error}"
+                    )
+                    proxy_initialization_failed = True
+                    self.api = None
+                    
+            except ConnectionError as e:
+                logger.error(
+                    f"Proxy connection error during Api initialization with {sanitized_url}: {e}. "
+                    f"The proxy server may be unreachable. Falling back to direct connection.",
+                    exc_info=True
+                )
+                logfire.error(f"Proxy connection failed for {sanitized_url}: {e}")
+                proxy_initialization_failed = True
+                self.api = None
+                
+                # Send SMS notification if enabled
+                if SMS_NOTIFICATIONS_ENABLED:
+                    try:
+                        temp_sms = SmsNotifier()
+                        if temp_sms.client:
+                            temp_sms.send_sms(
+                                f"aSentrX: Proxy connection failed ({sanitized_url}). Using direct connection."
+                            )
+                    except Exception as sms_error:
+                        logger.debug(f"Failed to send SMS notification about proxy error: {sms_error}")
+                        
+            except (TimeoutError, OSError) as e:
+                logger.error(
+                    f"Network error during Api initialization with proxy {sanitized_url}: {e}. "
+                    f"Falling back to direct connection.",
+                    exc_info=True
+                )
+                logfire.error(f"Proxy network error for {sanitized_url}: {e}")
+                proxy_initialization_failed = True
+                self.api = None
+                
+            except Exception as e:
+                logger.error(
+                    f"Unexpected error during Api initialization with proxy {sanitized_url}: {e}. "
+                    f"Falling back to direct connection.",
+                    exc_info=True
+                )
+                logfire.error(f"Unexpected proxy error for {sanitized_url}: {e}")
+                proxy_initialization_failed = True
+                self.api = None
+        
+        # Fallback to direct connection if proxy failed or was not configured
+        if self.api is None:
+            if proxy_initialization_failed:
+                logger.warning(
+                    f"Proxy initialization failed. Initializing truthbrush Api with direct connection as fallback."
+                )
+                logfire.warning("Falling back to direct connection after proxy failure")
+            else:
+                logger.info("Initializing truthbrush Api without proxy")
+            
+            try:
+                self.api = Api()
+                logger.info("Successfully initialized Api with direct connection")
+            except Exception as e:
+                error_message = f"CRITICAL: Failed to initialize truthbrush Api even without proxy: {e}"
+                logger.error(error_message, exc_info=True)
+                logfire.error(error_message)
+                
+                # In PROD mode, this is critical and should not continue
+                if PROD_EXECUTION_ENABLED:
+                    logger.error("PROD_EXECUTION mode: Cannot continue without Api instance. Aborting initialization.")
+                    raise RuntimeError(error_message) from e
+                else:
+                    logger.warning("Non-PROD mode: Continuing despite Api initialization failure for testing purposes.")
+                    # In non-PROD, we might want to continue for debugging, but this is risky
+                    raise RuntimeError(error_message) from e
+        
         self.username = username
         self.interval_seconds = fetch_interval_seconds
         self.api_verbose_output = api_verbose_output
