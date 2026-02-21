@@ -4,11 +4,13 @@
 #
 
 app = 'asentrx-prd'
-primary_region = 'phx'
+primary_region = 'lax'
 
 [build]
 
 [env]
+  # Avoid writing .pyc files in container runtime
+  PYTHONDONTWRITEBYTECODE = '1'
   API_VERBOSE_OUTPUT = 'False'
   FETCH_INTERVAL_SECONDS = '10'
   INITIAL_SINCE_ID = '114616421679095002'
@@ -24,6 +26,7 @@ primary_region = 'phx'
 
   # DECODO PROXY CONFIGURATION
   DECODO_PROXY_ENABLED='True'
+  DECODO_PROXY_MAX_RETRIES='3'
   DECODO_PROXY_URL='http://gate.decodo.com:7000'
 
   # Generic Trading Settings (applied when topic is 'market', 'tariffs', etc.)

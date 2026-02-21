@@ -36,7 +36,7 @@ aSentrX is an advanced Python application designed for fetching, analyzing, and 
 
 *   Python 3.12+
 *   [Poetry](https://python-poetry.org/docs/#installation) (for managing dependencies and running the project)
-*   Docker and Docker Compose (for containerized deployment)
+*   Docker (for containerized deployment)
 *   Access to services and their API keys:
     *   Truth Social (implicitly, via `truthbrush`)
     *   An LLM provider compatible with `pydantic-ai` (e.g., Groq, OpenAI)
@@ -64,15 +64,16 @@ aSentrX is an advanced Python application designed for fetching, analyzing, and 
 
 4.  **Create and configure the `.env` file:**
     Copy the `.env.example` (if provided) to `.env` or create a new `.env` file in the project's root directory. Populate it with your specific configurations and API keys.
+    If you use the Decodo proxy, also configure `DECODO_PROXY_MAX_RETRIES` (recommended: `3`).
 
     **Important:** Add `.env` to your `.gitignore` file to prevent committing sensitive credentials.
 
 ### 2. Docker Setup (for Deployment & Consistent Environments)
 
-The project includes a `Dockerfile` and  a `docker-compose.yml` for managing the service.
+The project includes a `Dockerfile` for building and running the service.
 
 1.  **Clone the repository (if not already done).**
-2.  **Create the `.env` file** in the project's root directory as described above. Docker Compose will use this to inject environment variables into the container.
+2.  **Create the `.env` file** in the project's root directory as described above.
 3.  **(Optional, but recommended) Create/Review `.dockerignore` file:**
     Ensure this file excludes unnecessary files (like `.git`, `venv`, `__pycache__`, local `.env` if mounted differently) from the Docker build context.
 
@@ -80,24 +81,42 @@ The project includes a `Dockerfile` and  a `docker-compose.yml` for managing the
 
 The main application (`main.py`) is designed to run continuously.
 
-### With Docker Compose (Recommended for production-like environments)
+### With Docker (Recommended for production-like environments)
 
-1.  **Build and start the service:**
+The project uses Docker Hub for image distribution: `felixfreichur/asentrx:latest`
+
+1.  **Pull and start the pre-built image from Docker Hub:**
     ```bash
-    sudo docker compose up --build -d
+    sudo docker pull felixfreichur/asentrx:latest
+    sudo docker run -d --name asentrx_container --env-file .env-prod felixfreichur/asentrx:latest
     ```
-    The `-d` flag runs the service in detached mode. Omit it to see logs directly.
+    The `-d` flag runs the service in detached mode.
 
-2.  **View logs:**
-    (Primarily for console logs if Logfire is also used)
+2.  **Build and start locally (for development with changes):**
     ```bash
-    sudo docker compose logs -f asentrx_app
+    sudo docker build -t asentrx:local .
+    sudo docker run -d --name asentrx_local --env-file .env asentrx:local
+    ```
+
+3.  **View logs:**
+    ```bash
+    sudo docker logs -f asentrx_container
     ```
     For detailed analysis, check your Logfire dashboard.
 
-3.  **Stop the service:**
+4.  **Stop the service:**
     ```bash
-    sudo docker compose down
+    sudo docker stop asentrx_container
+    sudo docker rm asentrx_container
+    ```
+
+### Building and Pushing to Docker Hub
+
+1.  **Build and push the image:**
+    ```bash
+    sudo docker build -t felixfreichur/asentrx:latest .
+    sudo docker login
+    sudo docker push felixfreichur/asentrx:latest
     ```
 
 ### Manually (using Poetry, for local development)
