@@ -5,3 +5,14 @@ venv
 /experiments/asentrx_default.log
 /asentrx_default.log
 /.env-prod
+
+# macOS/local editor noise
+.DS_Store
+
+# Python cache artifacts
+__pycache__/
+*.py[cod]
+
+# Local runtime logs
+app_logs/
+*.log
