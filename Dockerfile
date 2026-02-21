@@ -1,7 +1,7 @@
-FROM python:3.12-slim AS builder
+FROM python:3.13-slim AS builder
 
 # Set environment variables for Poetry
-ENV POETRY_VERSION=1.7.1
+ENV POETRY_VERSION=2.2.1
 ENV POETRY_HOME="/opt/poetry"
 ENV POETRY_VIRTUALENVS_CREATE=false \
     POETRY_CACHE_DIR=/tmp/poetry_cache
@@ -29,10 +29,10 @@ COPY poetry.lock pyproject.toml ./
 # --no-ansi: Disable ANSI output
 # --no-root: Do not install the project itself, only dependencies. Useful if you run scripts directly.
 #            If your project is a package that needs to be installed, remove --no-root.
-RUN poetry install --no-dev --no-interaction --no-ansi --no-root
+RUN poetry install --without dev --no-interaction --no-ansi --no-root
 
 # Stage 2: Final Stage - Erstellt das schlanke Produktionsimage
-FROM python:3.12-slim AS final
+FROM python:3.13-slim AS final
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
@@ -45,14 +45,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Playwright browser dependencies and Chromium
-RUN playwright install --with-deps chromium
-
 WORKDIR /app
 
 # Copy installed dependencies from the builder stage
-COPY --from=builder /usr/local/lib/python3.12/site-packages/ /usr/local/lib/python3.12/site-packages/
+COPY --from=builder /usr/local/lib/python3.13/site-packages/ /usr/local/lib/python3.13/site-packages/
 COPY --from=builder /usr/local/bin/ /usr/local/bin/
+
+# Install Playwright browser dependencies and Chromium
+RUN playwright install --with-deps chromium
 
 # Copy application code
 COPY main.py .

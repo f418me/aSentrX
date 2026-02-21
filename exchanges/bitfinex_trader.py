@@ -1,6 +1,6 @@
 import os
 import requests
-from bfxapi import Client, REST_HOST
+from exchanges.bitfinex_rest_client import BitfinexRestClient
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -30,10 +30,9 @@ class BitfinexTrader:
             print("Warning: API key or secret not provided. Authenticated methods will fail.")
             self.bfx_client = None  # Kein Client, wenn keine Keys
         else:
-            self.bfx_client = Client(
-                rest_host=REST_HOST,
+            self.bfx_client = BitfinexRestClient(
                 api_key=self.api_key,
-                api_secret=self.api_secret
+                api_secret=self.api_secret,
             )
 
         self.default_symbol = default_symbol
@@ -50,7 +49,7 @@ class BitfinexTrader:
         """Helper to get the authenticated client, raises error if not available."""
         if not self.bfx_client:
             raise ConnectionError("Authenticated Bitfinex client not initialized. API Key/Secret missing?")
-        return self.bfx_client.rest.auth
+        return self.bfx_client
 
     def get_wallets(self):
         """
@@ -162,5 +161,4 @@ class BitfinexTrader:
         except ValueError:  # requests.JSONDecodeError inherits from ValueError
             print(f"Error decoding JSON response for order book of {final_symbol}.")
             return None
-
 
