@@ -5,7 +5,7 @@ Automated social-signal trading bot for Truth Social with LLM-based analysis and
 `aSentrX` continuously fetches new posts, classifies relevance and expected market direction, and can place leveraged limit orders when confidence thresholds are met.
 
 ## Table of Contents
-- [Why aSentrX](#why-asentrx)
+- [Overview aSentrX](#overview-asentrx)
 - [Quickstart](#quickstart)
 - [How It Works](#how-it-works)
 - [Requirements](#requirements)
@@ -19,7 +19,7 @@ Automated social-signal trading bot for Truth Social with LLM-based analysis and
 - [Contributing](#contributing)
 - [License](#license)
 
-## Why aSentrX
+## Overview aSentrX
 - Monitors a target account on Truth Social via Playwright.
 - Extracts and normalizes post content.
 - Uses `pydantic-ai` + configurable LLM provider for trade decisions.

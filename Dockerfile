@@ -38,6 +38,7 @@ FROM python:3.13-slim AS final
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PATH="/app/.venv/bin:${PATH}"
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 # Install runtime dependencies for curl_cffi and proxy support
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -67,8 +68,8 @@ COPY utils/ ./utils/
 RUN groupadd --gid 1001 appuser && \
     useradd --uid 1001 --gid 1001 --shell /bin/bash --create-home appuser
 
-# Ensure the app directory and its contents are owned by the appuser
-RUN chown -R appuser:appuser /app
+# Ensure app and Playwright browser files are accessible to appuser
+RUN chown -R appuser:appuser /app /ms-playwright
 
 USER appuser
 
