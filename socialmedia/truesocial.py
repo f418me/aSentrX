@@ -1,7 +1,10 @@
 import logging
 import os
+import random
+import string
 import sys
 import threading
+import time
 
 import logfire
 from utils import StatusParser
@@ -85,9 +88,13 @@ class TrueSocial:
         # Removes username:password@ from URL (e.g. http://user:pass@host:port -> http://host:port)
         return re.sub(r'://[^:]+:[^@]+@', '://', url)
 
-    def _build_proxy_config(self) -> dict | None:
+    def _build_proxy_config(self, session_suffix: str | None = None) -> dict | None:
         """
         Creates proxy configuration for the browser client based on environment variables.
+        
+        Args:
+            session_suffix: Optional suffix appended to the proxy username to force
+                            Decodo to assign a new IP (e.g. 'spe9u6h0a7-sess-abc123').
         
         Returns:
             dict with 'proxies' for requests library, or None if proxy is disabled or configuration is invalid
@@ -116,9 +123,14 @@ class TrueSocial:
         if DECODO_PROXY_USERNAME and DECODO_PROXY_PASSWORD:
             # Insert credentials into URL
             # Format: http://username:password@host:port
+            # Append session suffix to username to force Decodo to rotate IP
+            effective_username = DECODO_PROXY_USERNAME
+            if session_suffix:
+                effective_username = f"{DECODO_PROXY_USERNAME}-session-{session_suffix}"
             protocol, rest = proxy_url.split('://', 1)
-            proxy_url = f"{protocol}://{DECODO_PROXY_USERNAME}:{DECODO_PROXY_PASSWORD}@{rest}"
-            logger.debug("Proxy authentication enabled (Username and Password are set).")
+            proxy_url = f"{protocol}://{effective_username}:{DECODO_PROXY_PASSWORD}@{rest}"
+            logger.debug("Proxy authentication enabled (Username and Password are set).%s",
+                         f" Session: {session_suffix}" if session_suffix else "")
         elif DECODO_PROXY_USERNAME or DECODO_PROXY_PASSWORD:
             logger.warning(
                 "Only one of the proxy credentials (Username or Password) is set. "
@@ -153,7 +165,7 @@ class TrueSocial:
             sanitized_url = self._sanitize_proxy_url(DECODO_PROXY_URL)
             logger.info(f"🔧 Initializing Playwright client with Decodo Proxy: {sanitized_url}")
             try:
-                self.api = PlaywrightTruthClient(proxy_config=proxy_config, headless=PLAYWRIGHT_HEADLESS)
+                self.api = PlaywrightTruthClient(proxy_config=proxy_config, headless=PLAYWRIGHT_HEADLESS, timeout_ms=60000)
                 logger.info(f"✅ Successfully initialized Playwright client with proxy: {sanitized_url}")
             except Exception as e:
                 logger.error(
@@ -176,7 +188,7 @@ class TrueSocial:
                 logger.info("ℹ️  Initializing Playwright client without proxy (DECODO_PROXY_ENABLED=False)")
 
             try:
-                self.api = PlaywrightTruthClient(proxy_config=None, headless=PLAYWRIGHT_HEADLESS)
+                self.api = PlaywrightTruthClient(proxy_config=None, headless=PLAYWRIGHT_HEADLESS, timeout_ms=60000)
                 logger.info("✅ Successfully initialized Playwright client with direct connection")
             except Exception as e:
                 error_message = f"CRITICAL: Failed to initialize Playwright client even without proxy: {e}"
@@ -196,43 +208,86 @@ class TrueSocial:
         self.interval_seconds = fetch_interval_seconds
         self.api_verbose_output = api_verbose_output
         self.content_analyzer = ContentAnalyzer()
+        self.last_known_id: str | None = None
 
         if PROD_EXECUTION_ENABLED:
             logger.info(
                 f"PROD_EXECUTION is enabled.. Attempting to fetch current latest status ID "
                 f"to process only posts made after application startup.")
             try:
-                # Pull_statuses without since_id fetches the latest ones.
-                # We only need the ID of the very latest status.
-                statuses_gen = self.api.pull_statuses(
-                    username=self.username,
-                    replies=False,
-                    since_id=initial_since_id,
-                    verbose=self.api_verbose_output
-                )
-                # Get a list from generator and take the first item
-                # Client pull_statuses yields newest items first.
-                statuses_list = list(statuses_gen)
-                latest_status = statuses_list[0]
+                max_startup_retries = DECODO_PROXY_MAX_RETRIES if self.proxy_config else 1
+                latest_status = None
 
-                if latest_status and 'id' in latest_status:
-                    self.last_known_id = str(latest_status['id'])  # Ensure it's a string
-                    logger.info(f"PROD: Successfully set last_known_id to '{self.last_known_id}' "
-                                f"(ID of the latest status at startup for '{self.username}'). "
-                                f"Only posts strictly newer than this will be processed.")
-                elif latest_status is None:  # No posts found for this user
-                    error_message = (f"PROD: CRITICAL - No existing statuses found for user '{self.username}'. "
-                                     f"Cannot reliably determine a starting point. Aborting initialization.")
-                    logger.error(error_message)
-                    logfire.error(error_message)
-                    raise RuntimeError(error_message)
-                else:  # Status exists but has no ID (latest_status is not None, but 'id' not in latest_status)
-                    error_message = (
-                        f"PROD: CRITICAL - Fetched latest status for '{self.username}' but it has no 'id' attribute. "
-                        f"This is unexpected. Cannot reliably determine a starting point. Aborting initialization.")
-                    logger.error(error_message)
-                    logfire.error(error_message)
-                    raise RuntimeError(error_message)
+                for attempt in range(1, max_startup_retries + 1):
+                    try:
+                        # pull_statuses without since_id fetches the latest ones.
+                        # We only need the ID of the very latest status.
+                        statuses_gen = self.api.pull_statuses(
+                            username=self.username,
+                            replies=False,
+                            since_id=initial_since_id,
+                            verbose=self.api_verbose_output
+                        )
+                        # Client pull_statuses yields newest items first.
+                        statuses_list = list(statuses_gen)
+                        latest_status = statuses_list[0] if statuses_list else None
+                        break
+                    except Exception as e:
+                        is_blocked = self._is_blocked_error(e)
+                        if is_blocked and attempt < max_startup_retries:
+                            logger.warning(
+                                "PROD: Startup fetch was blocked/challenged. Rotating proxy session and retrying "
+                                "(attempt %d/%d)...",
+                                attempt + 1,
+                                max_startup_retries,
+                            )
+                            if self.proxy_config:
+                                self._rebuild_client_with_new_session()
+                            time.sleep(2 * attempt)
+                            continue
+                        if is_blocked and initial_since_id:
+                            self.last_known_id = initial_since_id
+                            logger.warning(
+                                "PROD: Startup fetch blocked/challenged for '%s'. "
+                                "Falling back to INITIAL_SINCE_ID='%s'.",
+                                self.username,
+                                self.last_known_id,
+                            )
+                            logfire.warning(
+                                f"Startup fetch blocked/challenged for {self.username}; "
+                                f"falling back to INITIAL_SINCE_ID={self.last_known_id}"
+                            )
+                            break
+                        raise
+
+                if self.last_known_id is None:
+                    if latest_status and 'id' in latest_status:
+                        self.last_known_id = str(latest_status['id'])  # Ensure it's a string
+                        logger.info(f"PROD: Successfully set last_known_id to '{self.last_known_id}' "
+                                    f"(ID of the latest status at startup for '{self.username}'). "
+                                    f"Only posts strictly newer than this will be processed.")
+                    elif latest_status is None and initial_since_id:
+                        self.last_known_id = initial_since_id
+                        logger.warning(
+                            "PROD: No startup statuses found for '%s'. Falling back to "
+                            "INITIAL_SINCE_ID='%s'.",
+                            self.username,
+                            self.last_known_id,
+                        )
+                    elif latest_status is None:  # No posts found for this user and no fallback available
+                        error_message = (f"PROD: CRITICAL - No existing statuses found for user '{self.username}', "
+                                         f"and no INITIAL_SINCE_ID fallback is set. "
+                                         f"Cannot reliably determine a starting point.")
+                        logger.error(error_message)
+                        logfire.error(error_message)
+                        raise RuntimeError(error_message)
+                    else:  # Status exists but has no ID
+                        error_message = (
+                            f"PROD: CRITICAL - Fetched latest status for '{self.username}' but it has no 'id' attribute. "
+                            f"This is unexpected. Cannot reliably determine a starting point.")
+                        logger.error(error_message)
+                        logfire.error(error_message)
+                        raise RuntimeError(error_message)
             except RuntimeError as e:
                 error_message = (f"Initialization failed for user '{self.username}': {e}")
                 logger.error(error_message)
@@ -474,6 +529,27 @@ class TrueSocial:
                 logger.debug(
                     f"Status ID [{status_id_for_log}]: SMS notification for '{sms_message_body}' was prepared, but SmsNotifier is not active.")
 
+    def _generate_session_id(self, length: int = 8) -> str:
+        """Generate a random session ID for proxy IP rotation."""
+        return ''.join(random.choices(string.ascii_lowercase + string.digits, k=length))
+
+    def _rebuild_client_with_new_session(self):
+        """
+        Rebuild the PlaywrightTruthClient with a fresh Decodo session ID
+        to force IP rotation on the next request.
+        """
+        session_id = self._generate_session_id()
+        new_proxy_config = self._build_proxy_config(session_suffix=session_id)
+        if new_proxy_config:
+            self.api = PlaywrightTruthClient(
+                proxy_config=new_proxy_config,
+                headless=PLAYWRIGHT_HEADLESS,
+                timeout_ms=60000,
+            )
+            logger.info("Rebuilt Playwright client with new proxy session (session=%s) for IP rotation.", session_id)
+        else:
+            logger.warning("Could not rebuild proxy config for session rotation.")
+
     def _check_current_ip(self) -> str | None:
         """
         Checks the current IP address used for requests.
@@ -519,8 +595,13 @@ class TrueSocial:
             "forbidden",
             "captcha",
             "cloudflare",
+            "challenge",
             "security check",
             "cannot authenticate",
+            "just a moment",
+            "attention required",
+            "something went wrong",
+            "timeout",  # Navigation timeout – likely network-level blocking
         ]
         
         return any(indicator in error_str for indicator in blocking_indicators)
@@ -533,15 +614,19 @@ class TrueSocial:
         max_retries = DECODO_PROXY_MAX_RETRIES if self.proxy_config else 1
         request_succeeded = False
         statuses = []
+
+        # Only perform IP checks when DEBUG level is active (avoids extra latency)
+        do_ip_check = logger.isEnabledFor(logging.DEBUG)
         
         for attempt in range(1, max_retries + 1):
-            # IP-Check before request
-            current_ip = self._check_current_ip()
+            current_ip: str | None = None
+            if do_ip_check:
+                current_ip = self._check_current_ip()
             ip_info = f" [IP: {current_ip}]" if current_ip else ""
             
             proxy_status = "🔒 PROXY AKTIV" if self.proxy_config else "🌐 DIREKT"
             
-            retry_info = f" (Attempt {attempt}/{max_retries})" if max_retries > 1 and attempt > 1 else ""
+            retry_info = f" (Attempt {attempt}/{max_retries})" if attempt > 1 else ""
             
             logger.info(f"{'='*80}")
             logger.info(f"🔄 API REQUEST START - {proxy_status}{ip_info}{retry_info}")
@@ -554,20 +639,8 @@ class TrueSocial:
                 )
                 statuses = list(statuses_generator)  # Materialize the generator to a list
                 
-                # IP-Check after request
-                new_ip = self._check_current_ip()
-                new_ip_info = f" [IP: {new_ip}]" if new_ip else ""
-                
                 logger.info(f"{'='*80}")
-                if current_ip and new_ip and current_ip != new_ip:
-                    logger.info(f"✅ IP CHANGED: {current_ip} → {new_ip}")
-                    logger.info(f"   Proxy is working correctly - IP was rotated!")
-                elif current_ip and new_ip:
-                    logger.warning(f"⚠️  IP UNCHANGED: {current_ip}")
-                    logger.warning(f"   Proxy may not rotate IP on every request")
-                    logger.warning(f"   This can be normal when requests occur in quick succession")
-                
-                logger.info(f"✅ API REQUEST COMPLETE{new_ip_info} - {len(statuses)} statuses fetched")
+                logger.info(f"✅ API REQUEST COMPLETE - {len(statuses)} statuses fetched")
                 logger.info(f"{'='*80}")
                 
                 # Success - break retry loop
@@ -585,10 +658,10 @@ class TrueSocial:
 
                 if is_blocked and self.proxy_config and attempt < max_retries:
                     logger.warning("🚫 Authentication appears blocked; retrying with a new proxy IP/session")
+                    self._rebuild_client_with_new_session()
                     logger.info(f"🔄 RETRYING with new proxy IP (attempt {attempt + 1}/{max_retries})...")
                     logger.info(f"{'='*80}")
-                    import time
-                    time.sleep(2)
+                    time.sleep(2 * attempt)  # Exponential back-off
                     continue
 
                 if is_blocked:
@@ -608,15 +681,10 @@ class TrueSocial:
                     logger.warning(f"🚫 IP appears to be BLOCKED (detected blocking indicators in error)")
                     
                     if self.proxy_config and attempt < max_retries:
+                        self._rebuild_client_with_new_session()
                         logger.info(f"🔄 RETRYING with new proxy IP (attempt {attempt + 1}/{max_retries})...")
-                        logger.info(f"   Forcing new session to get different IP")
                         logger.info(f"{'='*80}")
-                        
-                        # Force a small delay before retry to allow IP rotation
-                        import time
-                        time.sleep(2)
-                        
-                        # Continue to next attempt
+                        time.sleep(2 * attempt)  # Exponential back-off
                         continue
                     else:
                         if not self.proxy_config:

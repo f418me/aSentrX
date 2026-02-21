@@ -1,8 +1,9 @@
 import html
 import logging
+import time
 from urllib.parse import urlsplit
 
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 from playwright_stealth import Stealth
 
 
@@ -12,7 +13,7 @@ logger = logging.getLogger("aSentrX.PlaywrightClient")
 class PlaywrightTruthClient:
     """Fetch public Truth Social statuses using browser automation."""
 
-    def __init__(self, proxy_config: dict | None = None, headless: bool = True, timeout_ms: int = 30000):
+    def __init__(self, proxy_config: dict | None = None, headless: bool = True, timeout_ms: int = 60000):
         self.proxy_config = proxy_config
         self.headless = headless
         self.timeout_ms = timeout_ms
@@ -34,6 +35,22 @@ class PlaywrightTruthClient:
         if parsed.password:
             proxy["password"] = parsed.password
         return proxy
+
+    @staticmethod
+    def _is_cloudflare_challenge(title: str, body: str) -> bool:
+        """Detect Cloudflare challenge pages using multiple indicators."""
+        title_lower = title.lower()
+        body_lower = body.lower()
+        cf_title_patterns = ["attention required", "just a moment", "access denied", "please wait"]
+        cf_body_patterns = [
+            "cloudflare", "cf-challenge", "cf-turnstile", "cf-browser-verification",
+            "challenge-platform", "ray id", "_cf_chl",
+        ]
+        if any(p in title_lower for p in cf_title_patterns):
+            return True
+        if any(p in body_lower for p in cf_body_patterns):
+            return True
+        return False
 
     def pull_statuses(self, username: str, replies: bool = False, verbose: bool = False, since_id: str | None = None):
         del replies  # Public timeline page already filters to visible posts.
@@ -61,24 +78,38 @@ class PlaywrightTruthClient:
             )
             page = context.new_page()
             page.set_default_timeout(self.timeout_ms)
-            page.goto(url, wait_until="domcontentloaded")
+            try:
+                page.goto(url, wait_until="domcontentloaded")
 
-            # Give feed content time to mount.
-            page.wait_for_timeout(5000)
-            title = page.title().lower()
-            body = page.content()
+                # Smart wait: try to detect when actual content has loaded,
+                # falling back to a short static wait if no selector appears.
+                try:
+                    page.wait_for_selector(
+                        'article, [data-testid="status"], div[class*="status"]',
+                        timeout=8000,
+                    )
+                except PlaywrightTimeout:
+                    # Selector not found – page may still be loading or is a challenge page.
+                    page.wait_for_timeout(3000)
 
-            if "attention required" in title or "cloudflare" in body.lower():
-                browser.close()
-                raise RuntimeError("Cloudflare challenge detected while loading timeline")
+                title = page.title().lower()
+                body = page.content()
 
-            if "something went wrong" in body.lower():
-                browser.close()
-                raise RuntimeError("Truth Social returned 'Something went wrong' error page")
+                if self._is_cloudflare_challenge(title, body):
+                    logger.warning(
+                        "Cloudflare challenge detected while loading %s", url
+                    )
+                    raise RuntimeError(
+                        "Cloudflare challenge detected while loading timeline"
+                    )
 
-            statuses = page.evaluate(
-                """
-                async (username) => {
+                body_lower = body.lower()
+                if "something went wrong" in body_lower:
+                    raise RuntimeError("Truth Social returned 'Something went wrong' error page")
+
+                statuses = page.evaluate(
+                    """
+                    async (username) => {
                   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
                   // Primary path: use Truth Social's public web API from browser context.
@@ -154,12 +185,12 @@ class PlaywrightTruthClient:
                     });
                   }
                   return out;
-                }
-                """,
-                username,
-            )
-
-            browser.close()
+                    }
+                    """,
+                    username,
+                )
+            finally:
+                browser.close()
 
         # Deduplicate by ID and sort newest first.
         unique_by_id: dict[str, dict] = {}
