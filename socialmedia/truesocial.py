@@ -4,10 +4,10 @@ import sys
 import threading
 
 import logfire
-from truthbrush import Api
 from utils import StatusParser
 from ai.asentrx_agent import ContentAnalyzer
 from utils.logger_config import APP_LOGGER_NAME
+from socialmedia.playwright_client import PlaywrightTruthClient
 
 from exchanges.bitfinex_trader import BitfinexTrader
 from trader.trader import Trader
@@ -19,11 +19,7 @@ PROD_EXECUTION_ENABLED = os.getenv("PROD_EXECUTION", "False").lower() == "true"
 SMS_NOTIFICATIONS_ENABLED = os.getenv("SMS_NOTIFICATIONS_ENABLED", "False").lower() == "true"
 
 TRADE_SYMBOL = os.getenv("TRADE_SYMBOL", "tBTCF0:USTF0")
-
-# --- TRUTHSOCIAL AUTH CONFIGURATION ---
-# If TRUTHSOCIAL_TOKEN is set, it will be used directly (skips OAuth login).
-# Extract from browser: DevTools → Application → Local Storage → truthsocial.com → key 'truth:auth' → access_token
-TRUTHSOCIAL_TOKEN = os.getenv("TRUTHSOCIAL_TOKEN", "").strip() or None
+PLAYWRIGHT_HEADLESS = os.getenv("PLAYWRIGHT_HEADLESS", "True").lower() == "true"
 
 # --- DECODO PROXY CONFIGURATION ---
 DECODO_PROXY_ENABLED = os.getenv("DECODO_PROXY_ENABLED", "False").lower() == "true"
@@ -91,7 +87,7 @@ class TrueSocial:
 
     def _build_proxy_config(self) -> dict | None:
         """
-        Creates proxy configuration for truthbrush Api based on environment variables.
+        Creates proxy configuration for the browser client based on environment variables.
         
         Returns:
             dict with 'proxies' for requests library, or None if proxy is disabled or configuration is invalid
@@ -145,123 +141,54 @@ class TrueSocial:
 
     def __init__(self, username: str, fetch_interval_seconds: int, api_verbose_output: bool,
                  initial_since_id: str | None = None):
-        # Build proxy configuration before Api instantiation
+        # Build proxy configuration before API client instantiation
         proxy_config = self._build_proxy_config()
-        
-        # Store proxy config for later use
         self.proxy_config = proxy_config
-        
-        # Log authentication mode
-        if TRUTHSOCIAL_TOKEN:
-            logger.info("🔑 Auth mode: TRUTHSOCIAL_TOKEN (Bearer token) — OAuth login will be skipped.")
-            logfire.info("Auth mode: TRUTHSOCIAL_TOKEN (Bearer token)")
-        else:
-            logger.info("🔑 Auth mode: Username/Password (OAuth login flow)")
-            logfire.info("Auth mode: Username/Password (OAuth login flow)")
-        
-        # Initialize truthbrush Api with or without proxy
+
+        # Initialize Playwright-based client with or without proxy.
         self.api = None
         proxy_initialization_failed = False
-        
+
         if proxy_config:
             sanitized_url = self._sanitize_proxy_url(DECODO_PROXY_URL)
-            logger.info(f"🔧 Initializing truthbrush Api with Decodo Proxy: {sanitized_url}")
-            logger.info(f"📍 Proxy will be automatically used for every request (via _make_session override)")
-            
+            logger.info(f"🔧 Initializing Playwright client with Decodo Proxy: {sanitized_url}")
             try:
-                # Initialize Api and override _make_session to inject proxy
-                # Pass token explicitly so truthbrush skips OAuth login if token is available
-                self.api = Api(token=TRUTHSOCIAL_TOKEN)
-
-                # Create new _make_session that adds proxy configuration
-                def _make_session_with_proxy():
-                    # Try to use curl_cffi if available (truthbrush prefers it)
-                    try:
-                        from curl_cffi.requests import Session as CurlSession
-                        s = CurlSession(proxies=proxy_config["proxies"])
-                        logger.debug(f"🔄 New curl_cffi session with proxy created for IP rotation")
-                        return s
-                    except ImportError:
-                        # Fallback to standard requests.Session
-                        import requests
-                        s = requests.Session()
-                        s.proxies.update(proxy_config["proxies"])
-                        logger.debug(f"🔄 New requests session with proxy created for IP rotation")
-                        return s
-                
-                # Override the method
-                self.api._make_session = _make_session_with_proxy
-                
-                logger.info(f"✅ Successfully initialized Api with proxy: {sanitized_url}")
-                logger.info(f"✅ _make_session() overridden - Proxy will be used for every request")
-
-            except ConnectionError as e:
-                logger.error(
-                    f"❌ Proxy connection error during Api initialization with {sanitized_url}: {e}. "
-                    f"The proxy server may be unreachable. Falling back to direct connection.",
-                    exc_info=True
-                )
-                logfire.error(f"Proxy connection failed for {sanitized_url}: {e}")
-                proxy_initialization_failed = True
-                self.api = None
-                
-                # Send SMS notification if enabled
-                if SMS_NOTIFICATIONS_ENABLED:
-                    try:
-                        temp_sms = SmsNotifier()
-                        if temp_sms.client:
-                            temp_sms.send_sms(
-                                f"aSentrX: Proxy connection failed ({sanitized_url}). Using direct connection."
-                            )
-                    except Exception as sms_error:
-                        logger.debug(f"Failed to send SMS notification about proxy error: {sms_error}")
-                        
-            except (TimeoutError, OSError) as e:
-                logger.error(
-                    f"❌ Network error during Api initialization with proxy {sanitized_url}: {e}. "
-                    f"Falling back to direct connection.",
-                    exc_info=True
-                )
-                logfire.error(f"Proxy network error for {sanitized_url}: {e}")
-                proxy_initialization_failed = True
-                self.api = None
-                
+                self.api = PlaywrightTruthClient(proxy_config=proxy_config, headless=PLAYWRIGHT_HEADLESS)
+                logger.info(f"✅ Successfully initialized Playwright client with proxy: {sanitized_url}")
             except Exception as e:
                 logger.error(
-                    f"❌ Failed to configure proxy on Api: {e}. "
+                    f"❌ Failed to configure Playwright client with proxy: {e}. "
                     f"Falling back to direct connection.",
                     exc_info=True
                 )
-                logfire.error(
-                    f"Proxy configuration failed for {sanitized_url}: {e}"
-                )
+                logfire.error(f"Playwright proxy configuration failed for {sanitized_url}: {e}")
                 proxy_initialization_failed = True
                 self.api = None
 
-        # Fallback to direct connection if proxy failed or was not configured
+        # Fallback to direct connection if proxy failed or was not configured.
         if self.api is None:
             if proxy_initialization_failed:
                 logger.warning(
-                    f"⚠️  Proxy initialization failed. Initializing truthbrush Api with direct connection as fallback."
+                    "⚠️  Proxy initialization failed. Initializing Playwright client with direct connection as fallback."
                 )
                 logfire.warning("Falling back to direct connection after proxy failure")
             else:
-                logger.info("ℹ️  Initializing truthbrush Api without proxy (DECODO_PROXY_ENABLED=False)")
+                logger.info("ℹ️  Initializing Playwright client without proxy (DECODO_PROXY_ENABLED=False)")
 
             try:
-                self.api = Api(token=TRUTHSOCIAL_TOKEN)
-                logger.info("✅ Successfully initialized Api with direct connection")
+                self.api = PlaywrightTruthClient(proxy_config=None, headless=PLAYWRIGHT_HEADLESS)
+                logger.info("✅ Successfully initialized Playwright client with direct connection")
             except Exception as e:
-                error_message = f"CRITICAL: Failed to initialize truthbrush Api even without proxy: {e}"
+                error_message = f"CRITICAL: Failed to initialize Playwright client even without proxy: {e}"
                 logger.error(error_message, exc_info=True)
                 logfire.error(error_message)
 
                 # In PROD mode, this is critical and should not continue
                 if PROD_EXECUTION_ENABLED:
-                    logger.error("PROD_EXECUTION mode: Cannot continue without Api instance. Aborting initialization.")
+                    logger.error("PROD_EXECUTION mode: Cannot continue without API client instance. Aborting initialization.")
                     raise RuntimeError(error_message) from e
                 else:
-                    logger.warning("Non-PROD mode: Continuing despite Api initialization failure for testing purposes.")
+                    logger.warning("Non-PROD mode: Continuing despite API client initialization failure for testing purposes.")
                     # In non-PROD, we might want to continue for debugging, but this is risky
                     raise RuntimeError(error_message) from e
 
@@ -284,7 +211,7 @@ class TrueSocial:
                     verbose=self.api_verbose_output
                 )
                 # Get a list from generator and take the first item
-                # Truthbrush's pull_statuses yields newest items first.
+                # Client pull_statuses yields newest items first.
                 statuses_list = list(statuses_gen)
                 latest_status = statuses_list[0]
 
@@ -349,7 +276,7 @@ class TrueSocial:
         logger.info(f"TrueSocial instance initialized for user: '{self.username}'. "
                     f"Effective initial since_id: {self.last_known_id or 'None'}.")
         logger.debug(f"Instance configuration - Fetch interval: {fetch_interval_seconds}s. "
-                     f"Truthbrush API Verbose: {self.api_verbose_output}.")
+                     f"Client verbose mode: {self.api_verbose_output}.")
         logger.info(f"Trading Configuration - TRADE_SYMBOL: {TRADE_SYMBOL}")
 
         logger.info(
@@ -648,12 +575,11 @@ class TrueSocial:
                 break
                 
             except SystemExit as e:
-                # truthbrush raises SystemExit on auth failures (e.g. HTTP 403).
                 is_blocked = self._is_blocked_error(e)
 
                 logger.error(f"{'='*80}")
                 logger.error(
-                    f"❌ API REQUEST FAILED - truthbrush aborted during authentication for '{self.username}': {e}",
+                    f"❌ API REQUEST FAILED - client aborted request flow for '{self.username}': {e}",
                     exc_info=True
                 )
 
@@ -668,7 +594,7 @@ class TrueSocial:
                 if is_blocked:
                     logger.error(f"❌ Max retries ({max_retries}) reached - authentication still blocked")
                 else:
-                    logger.error("❌ Authentication failed in truthbrush (SystemExit) and is not classified as blocking")
+                    logger.error("❌ Authentication failed (SystemExit) and is not classified as blocking")
                 logger.error(f"{'='*80}")
                 return
 
@@ -713,7 +639,7 @@ class TrueSocial:
             return
 
         # Process statuses from oldest to newest within the batch
-        # truthbrush.Api.pull_statuses yields newest first. reversed() processes oldest first from the batch.
+        # pull_statuses yields newest first. reversed() processes oldest first from the batch.
         for status_dict in reversed(statuses):
             status_string = str(status_dict)  # Assuming status_dict can be stringified
             parser = StatusParser(status_string)
@@ -761,7 +687,7 @@ class TrueSocial:
                     f"Status ID [{status_id}] has no text content after cleaning. Skipping AI analysis and trading.")
 
         # Update last_known_id to the ID of the newest status in the fetched batch
-        # statuses[0] is the newest because truthbrush returns newest first from the API.
+        # statuses[0] is the newest because pull_statuses returns newest first from the API.
         if statuses:  # Ensure statuses list is not empty
             potential_newest_status_dict = statuses[0]  # This is a dict representing the newest status in the batch
             if isinstance(potential_newest_status_dict, dict) and 'id' in potential_newest_status_dict:

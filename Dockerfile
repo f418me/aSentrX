@@ -45,6 +45,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
+# Install Playwright browser dependencies and Chromium
+RUN playwright install --with-deps chromium
+
 WORKDIR /app
 
 # Copy installed dependencies from the builder stage

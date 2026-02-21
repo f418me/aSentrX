@@ -1,6 +1,6 @@
 # aSentrX
 
-aSentrX is an advanced Python application designed for fetching, analyzing, and acting upon social media statuses, primarily from platforms like Truth Social using the `truthbrush` library. It integrates AI-driven content analysis to understand sentiment and potential market impacts, and can execute trades via the Bitfinex API. The system is architected for continuous operation, features robust logging with Logfire, SMS notifications via Twilio, and is deployed using Docker on Fly.io with CI/CD via GitHub Actions.
+aSentrX is an advanced Python application designed for fetching, analyzing, and acting upon social media statuses, primarily from platforms like Truth Social using Playwright browser simulation. It integrates AI-driven content analysis to understand sentiment and potential market impacts, and can execute trades via the Bitfinex API. The system is architected for continuous operation, features robust logging with Logfire, SMS notifications via Twilio, and is deployed using Docker on Fly.io with CI/CD via GitHub Actions.
 
 ## Main Features
 
@@ -38,7 +38,7 @@ aSentrX is an advanced Python application designed for fetching, analyzing, and 
 *   [Poetry](https://python-poetry.org/docs/#installation) (for managing dependencies and running the project)
 *   Docker (for containerized deployment)
 *   Access to services and their API keys:
-    *   Truth Social (implicitly, via `truthbrush`)
+    *   Truth Social (via browser simulation with Playwright)
     *   An LLM provider compatible with `pydantic-ai` (e.g., Groq, OpenAI)
     *   Bitfinex (for trading)
     *   Twilio (for SMS notifications)
@@ -138,44 +138,25 @@ The project uses Docker Hub for image distribution: `felixfreichur/asentrx:lates
     The application will start, and logs will be sent to the console and Logfire.
 
 
-## Truth Social Authentication
+## Truth Social Access
 
-aSentrX supports two authentication methods for Truth Social via the `truthbrush` library:
+aSentrX fetches Truth Social posts using Playwright browser simulation of the public profile page.
 
-### Method 1: Username & Password (OAuth Login)
+### Playwright Setup
 
-Set in your `.env`:
-```env
-TRUTHSOCIAL_USERNAME=your_username
-TRUTHSOCIAL_PASSWORD=your_password
+Install browser binaries after dependency install:
+```bash
+poetry run playwright install chromium
 ```
 
-This performs an OAuth token exchange at startup. **Note:** This method may be blocked by Cloudflare (HTTP 403), especially from non-US IP addresses or datacenter IPs.
-
-### Method 2: Bearer Token (Recommended)
-
-If the OAuth login is blocked, you can extract your session token directly from the browser and bypass the login flow entirely.
-
-**How to extract your `TRUTHSOCIAL_TOKEN`:**
-
-1. Open **https://truthsocial.com** in your browser (Chrome/Firefox/Edge) and **log in** to your account.
-2. Open **Developer Tools**:
-   - **Mac**: `Cmd + Option + I`
-   - **Windows/Linux**: `F12` or `Ctrl + Shift + I`
-3. Go to the **Application** tab (Chrome/Edge) or **Storage** tab (Firefox).
-4. In the left sidebar, expand **Local Storage** → click on **`https://truthsocial.com`**.
-5. Find the key **`truth:auth`** in the list.
-6. Click on the value — it contains a JSON object. Copy the value of the **`access_token`** field.
-7. Add the token to your `.env` file:
-
+Optional in `.env`:
 ```env
-TRUTHSOCIAL_TOKEN=your_access_token_here
+PLAYWRIGHT_HEADLESS=True
 ```
 
 > **Important:**
-> - When `TRUTHSOCIAL_TOKEN` is set, it takes priority over username/password — the OAuth login is skipped entirely.
-> - The token **can expire**. If you start getting HTTP 401 errors, extract a fresh token from your browser.
-> - You can verify your token works by running: `python experiments/diagnose_truth_auth.py --use-token`
+> - Access may still be blocked by Cloudflare depending on IP/proxy reputation.
+> - If blocked, retries with proxy IP rotation are used when proxy is enabled.
 
 ## Logging
 
