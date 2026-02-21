@@ -25,6 +25,11 @@ DECODO_PROXY_ENABLED = os.getenv("DECODO_PROXY_ENABLED", "False").lower() == "tr
 DECODO_PROXY_URL = os.getenv("DECODO_PROXY_URL", "")
 DECODO_PROXY_USERNAME = os.getenv("DECODO_PROXY_USERNAME", "")
 DECODO_PROXY_PASSWORD = os.getenv("DECODO_PROXY_PASSWORD", "")
+try:
+    DECODO_PROXY_MAX_RETRIES = max(1, int(os.getenv("DECODO_PROXY_MAX_RETRIES", "3")))
+except ValueError:
+    logger.warning("Invalid DECODO_PROXY_MAX_RETRIES value. Falling back to 3.")
+    DECODO_PROXY_MAX_RETRIES = 3
 
 # --- GENERIC ORDER AMOUNTS (Positive for BUY/LONG, Negative for SHORT) ---
 ORDER_AMOUNT_BUY_HIGH_CONF = float(os.getenv("ORDER_AMOUNT_BUY_HIGH_CONF", "0.001"))
@@ -67,59 +72,59 @@ LIMIT_OFFSET_SHORT = float(os.getenv("LIMIT_OFFSET_SHORT", "0.005"))
 class TrueSocial:
     def _sanitize_proxy_url(self, url: str) -> str:
         """
-        Entfernt Credentials (username:password) aus einer Proxy-URL für sicheres Logging.
+        Removes credentials (username:password) from a proxy URL for safe logging.
         
         Args:
-            url: Die Proxy-URL die möglicherweise Credentials enthält
+            url: The proxy URL that may contain credentials
             
         Returns:
-            Die URL ohne Credentials
+            The URL without credentials
         """
         import re
-        # Entfernt username:password@ aus URL (z.B. http://user:pass@host:port -> http://host:port)
+        # Removes username:password@ from URL (e.g. http://user:pass@host:port -> http://host:port)
         return re.sub(r'://[^:]+:[^@]+@', '://', url)
 
     def _build_proxy_config(self) -> dict | None:
         """
-        Erstellt Proxy-Konfiguration für truthbrush Api basierend auf Umgebungsvariablen.
+        Creates proxy configuration for truthbrush Api based on environment variables.
         
         Returns:
-            dict mit 'proxies' für requests-Bibliothek, oder None wenn Proxy deaktiviert oder Konfiguration ungültig
+            dict with 'proxies' for requests library, or None if proxy is disabled or configuration is invalid
         """
         if not DECODO_PROXY_ENABLED:
-            logger.debug("Decodo Proxy ist deaktiviert (DECODO_PROXY_ENABLED=False).")
+            logger.debug("Decodo Proxy is disabled (DECODO_PROXY_ENABLED=False).")
             return None
         
         if not DECODO_PROXY_URL:
             logger.warning(
-                "Decodo Proxy ist aktiviert (DECODO_PROXY_ENABLED=True), aber DECODO_PROXY_URL ist nicht gesetzt. "
-                "Proxy wird nicht verwendet."
+                "Decodo Proxy is enabled (DECODO_PROXY_ENABLED=True), but DECODO_PROXY_URL is not set. "
+                "Proxy will not be used."
             )
             return None
         
-        # Validiere URL-Format (grundlegende Prüfung)
+        # Validate URL format (basic check)
         if not DECODO_PROXY_URL.startswith(('http://', 'https://')):
             logger.error(
-                f"Ungültiges DECODO_PROXY_URL Format: '{self._sanitize_proxy_url(DECODO_PROXY_URL)}'. "
-                "URL muss mit 'http://' oder 'https://' beginnen. Proxy wird nicht verwendet."
+                f"Invalid DECODO_PROXY_URL format: '{self._sanitize_proxy_url(DECODO_PROXY_URL)}'. "
+                "URL must start with 'http://' or 'https://'. Proxy will not be used."
             )
             return None
         
-        # Baue Proxy-URL mit Authentifizierung wenn vorhanden
+        # Build proxy URL with authentication if available
         proxy_url = DECODO_PROXY_URL
         if DECODO_PROXY_USERNAME and DECODO_PROXY_PASSWORD:
-            # Füge Credentials in die URL ein
+            # Insert credentials into URL
             # Format: http://username:password@host:port
             protocol, rest = proxy_url.split('://', 1)
             proxy_url = f"{protocol}://{DECODO_PROXY_USERNAME}:{DECODO_PROXY_PASSWORD}@{rest}"
-            logger.debug("Proxy-Authentifizierung wird verwendet (Username und Password sind gesetzt).")
+            logger.debug("Proxy authentication enabled (Username and Password are set).")
         elif DECODO_PROXY_USERNAME or DECODO_PROXY_PASSWORD:
             logger.warning(
-                "Nur einer der Proxy-Credentials (Username oder Password) ist gesetzt. "
-                "Beide müssen gesetzt sein für Authentifizierung. Proxy wird ohne Authentifizierung verwendet."
+                "Only one of the proxy credentials (Username or Password) is set. "
+                "Both must be set for authentication. Proxy will be used without authentication."
             )
         
-        # Erstelle requests-kompatibles Proxy-Dictionary
+        # Create requests-compatible proxy dictionary
         proxy_config = {
             "proxies": {
                 "http": proxy_url,
@@ -128,7 +133,7 @@ class TrueSocial:
         }
         
         logger.debug(
-            f"Proxy-Konfiguration erfolgreich erstellt für URL: {self._sanitize_proxy_url(DECODO_PROXY_URL)}"
+            f"Proxy configuration successfully created for URL: {self._sanitize_proxy_url(DECODO_PROXY_URL)}"
         )
         
         return proxy_config
@@ -138,48 +143,47 @@ class TrueSocial:
         # Build proxy configuration before Api instantiation
         proxy_config = self._build_proxy_config()
         
+        # Store proxy config for later use
+        self.proxy_config = proxy_config
+        
         # Initialize truthbrush Api with or without proxy
         self.api = None
         proxy_initialization_failed = False
         
         if proxy_config:
             sanitized_url = self._sanitize_proxy_url(DECODO_PROXY_URL)
-            logger.info(f"Initializing truthbrush Api with Decodo Proxy: {sanitized_url}")
+            logger.info(f"🔧 Initializing truthbrush Api with Decodo Proxy: {sanitized_url}")
+            logger.info(f"📍 Proxy will be automatically used for every request (via _make_session override)")
             
             try:
-                # Try to pass proxy config directly to Api constructor
-                self.api = Api(proxies=proxy_config["proxies"])
-                logger.info(f"Successfully initialized Api with proxy: {sanitized_url}")
+                # Initialize Api and override _make_session to inject proxy
+                self.api = Api()
+
+                # Create new _make_session that adds proxy configuration
+                def _make_session_with_proxy():
+                    # Try to use curl_cffi if available (truthbrush prefers it)
+                    try:
+                        from curl_cffi.requests import Session as CurlSession
+                        s = CurlSession(proxies=proxy_config["proxies"])
+                        logger.debug(f"🔄 New curl_cffi session with proxy created for IP rotation")
+                        return s
+                    except ImportError:
+                        # Fallback to standard requests.Session
+                        import requests
+                        s = requests.Session()
+                        s.proxies.update(proxy_config["proxies"])
+                        logger.debug(f"🔄 New requests session with proxy created for IP rotation")
+                        return s
                 
-            except TypeError as e:
-                # If Api doesn't accept proxies parameter, configure session after instantiation
-                logger.debug(f"Api constructor doesn't accept proxies parameter: {e}. Configuring session directly.")
-                try:
-                    self.api = Api()
-                    if hasattr(self.api, 'session'):
-                        self.api.session.proxies.update(proxy_config["proxies"])
-                        logger.info(f"Proxy configured on Api session: {sanitized_url}")
-                    else:
-                        logger.warning(
-                            f"Unable to configure proxy on Api instance (no 'session' attribute found). "
-                            f"Falling back to direct connection."
-                        )
-                        proxy_initialization_failed = True
-                except Exception as session_error:
-                    logger.error(
-                        f"Failed to configure proxy on Api session: {session_error}. "
-                        f"Falling back to direct connection.",
-                        exc_info=True
-                    )
-                    logfire.error(
-                        f"Proxy session configuration failed for {sanitized_url}: {session_error}"
-                    )
-                    proxy_initialization_failed = True
-                    self.api = None
-                    
+                # Override the method
+                self.api._make_session = _make_session_with_proxy
+                
+                logger.info(f"✅ Successfully initialized Api with proxy: {sanitized_url}")
+                logger.info(f"✅ _make_session() overridden - Proxy will be used for every request")
+
             except ConnectionError as e:
                 logger.error(
-                    f"Proxy connection error during Api initialization with {sanitized_url}: {e}. "
+                    f"❌ Proxy connection error during Api initialization with {sanitized_url}: {e}. "
                     f"The proxy server may be unreachable. Falling back to direct connection.",
                     exc_info=True
                 )
@@ -200,7 +204,7 @@ class TrueSocial:
                         
             except (TimeoutError, OSError) as e:
                 logger.error(
-                    f"Network error during Api initialization with proxy {sanitized_url}: {e}. "
+                    f"❌ Network error during Api initialization with proxy {sanitized_url}: {e}. "
                     f"Falling back to direct connection.",
                     exc_info=True
                 )
@@ -210,32 +214,34 @@ class TrueSocial:
                 
             except Exception as e:
                 logger.error(
-                    f"Unexpected error during Api initialization with proxy {sanitized_url}: {e}. "
+                    f"❌ Failed to configure proxy on Api: {e}. "
                     f"Falling back to direct connection.",
                     exc_info=True
                 )
-                logfire.error(f"Unexpected proxy error for {sanitized_url}: {e}")
+                logfire.error(
+                    f"Proxy configuration failed for {sanitized_url}: {e}"
+                )
                 proxy_initialization_failed = True
                 self.api = None
-        
+
         # Fallback to direct connection if proxy failed or was not configured
         if self.api is None:
             if proxy_initialization_failed:
                 logger.warning(
-                    f"Proxy initialization failed. Initializing truthbrush Api with direct connection as fallback."
+                    f"⚠️  Proxy initialization failed. Initializing truthbrush Api with direct connection as fallback."
                 )
                 logfire.warning("Falling back to direct connection after proxy failure")
             else:
-                logger.info("Initializing truthbrush Api without proxy")
-            
+                logger.info("ℹ️  Initializing truthbrush Api without proxy (DECODO_PROXY_ENABLED=False)")
+
             try:
                 self.api = Api()
-                logger.info("Successfully initialized Api with direct connection")
+                logger.info("✅ Successfully initialized Api with direct connection")
             except Exception as e:
                 error_message = f"CRITICAL: Failed to initialize truthbrush Api even without proxy: {e}"
                 logger.error(error_message, exc_info=True)
                 logfire.error(error_message)
-                
+
                 # In PROD mode, this is critical and should not continue
                 if PROD_EXECUTION_ENABLED:
                     logger.error("PROD_EXECUTION mode: Cannot continue without Api instance. Aborting initialization.")
@@ -244,7 +250,7 @@ class TrueSocial:
                     logger.warning("Non-PROD mode: Continuing despite Api initialization failure for testing purposes.")
                     # In non-PROD, we might want to continue for debugging, but this is risky
                     raise RuntimeError(error_message) from e
-        
+
         self.username = username
         self.interval_seconds = fetch_interval_seconds
         self.api_verbose_output = api_verbose_output
@@ -351,6 +357,9 @@ class TrueSocial:
             f"Bitcoin Specific Confidence Thresholds - HIGH: {CONFIDENCE_THRESHOLD_BITCOIN_HIGH}, MED: {CONFIDENCE_THRESHOLD_BITCOIN_MED}")
 
         logger.info(f"Limit Offsets - BUY: {LIMIT_OFFSET_BUY * 100:.2f}%, SHORT: {LIMIT_OFFSET_SHORT * 100:.2f}%")
+        
+        if self.proxy_config:
+            logger.info(f"Proxy Retry Configuration - Max Retries: {DECODO_PROXY_MAX_RETRIES} (with new IP on each retry)")
 
     def _execute_trade_logic(self, analysis_result, status_id_for_log: str):
         if not self.my_trader:
@@ -524,16 +533,139 @@ class TrueSocial:
                 logger.debug(
                     f"Status ID [{status_id_for_log}]: SMS notification for '{sms_message_body}' was prepared, but SmsNotifier is not active.")
 
-    def fetch_and_process_statuses(self):
-        logger.debug(f"Attempting to fetch statuses for '{self.username}' since_id: {self.last_known_id or 'None'}.")
-
+    def _check_current_ip(self) -> str | None:
+        """
+        Checks the current IP address used for requests.
+        Uses the same proxy as the API if configured.
+        
+        Returns:
+            The current IP address or None on error
+        """
         try:
-            statuses_generator = self.api.pull_statuses(
-                username=self.username, replies=False, verbose=self.api_verbose_output, since_id=self.last_known_id
-            )
-            statuses = list(statuses_generator)  # Materialize the generator to a list
+            import requests
+            
+            # Use the same proxy configuration as the API
+            proxies = None
+            if self.proxy_config:
+                proxies = self.proxy_config["proxies"]
+            
+            response = requests.get('https://api.ipify.org?format=json', proxies=proxies, timeout=5)
+            if response.status_code == 200:
+                return response.json().get('ip')
         except Exception as e:
-            logger.error(f"Error during API call to fetch statuses for '{self.username}': {e}", exc_info=True)
+            logger.debug(f"IP check failed: {e}")
+        return None
+
+    def _is_blocked_error(self, exception: Exception) -> bool:
+        """
+        Checks if the exception indicates that the IP was blocked.
+        
+        Args:
+            exception: The exception to check
+            
+        Returns:
+            True if the error indicates IP blocking, False otherwise
+        """
+        error_str = str(exception).lower()
+        
+        # Common blocking indicators
+        blocking_indicators = [
+            "403",  # Forbidden
+            "429",  # Too Many Requests
+            "blocked",
+            "rate limit",
+            "access denied",
+            "forbidden",
+            "captcha",
+            "cloudflare",
+            "security check",
+        ]
+        
+        return any(indicator in error_str for indicator in blocking_indicators)
+
+    def fetch_and_process_statuses(self):
+        """
+        Fetches and processes statuses with automatic retry on blocked IPs.
+        If proxy is enabled and request fails due to blocking, retries with new IP.
+        """
+        max_retries = DECODO_PROXY_MAX_RETRIES if self.proxy_config else 1
+        request_succeeded = False
+        statuses = []
+        
+        for attempt in range(1, max_retries + 1):
+            # IP-Check before request
+            current_ip = self._check_current_ip()
+            ip_info = f" [IP: {current_ip}]" if current_ip else ""
+            
+            proxy_status = "🔒 PROXY AKTIV" if self.proxy_config else "🌐 DIREKT"
+            
+            retry_info = f" (Attempt {attempt}/{max_retries})" if max_retries > 1 and attempt > 1 else ""
+            
+            logger.info(f"{'='*80}")
+            logger.info(f"🔄 API REQUEST START - {proxy_status}{ip_info}{retry_info}")
+            logger.info(f"   User: '{self.username}' | Since ID: {self.last_known_id or 'None'}")
+            logger.info(f"{'='*80}")
+
+            try:
+                statuses_generator = self.api.pull_statuses(
+                    username=self.username, replies=False, verbose=self.api_verbose_output, since_id=self.last_known_id
+                )
+                statuses = list(statuses_generator)  # Materialize the generator to a list
+                
+                # IP-Check after request
+                new_ip = self._check_current_ip()
+                new_ip_info = f" [IP: {new_ip}]" if new_ip else ""
+                
+                logger.info(f"{'='*80}")
+                if current_ip and new_ip and current_ip != new_ip:
+                    logger.info(f"✅ IP CHANGED: {current_ip} → {new_ip}")
+                    logger.info(f"   Proxy is working correctly - IP was rotated!")
+                elif current_ip and new_ip:
+                    logger.warning(f"⚠️  IP UNCHANGED: {current_ip}")
+                    logger.warning(f"   Proxy may not rotate IP on every request")
+                    logger.warning(f"   This can be normal when requests occur in quick succession")
+                
+                logger.info(f"✅ API REQUEST COMPLETE{new_ip_info} - {len(statuses)} statuses fetched")
+                logger.info(f"{'='*80}")
+                
+                # Success - break retry loop
+                request_succeeded = True
+                break
+                
+            except Exception as e:
+                is_blocked = self._is_blocked_error(e)
+                
+                logger.error(f"{'='*80}")
+                logger.error(f"❌ API REQUEST FAILED - Error during API call to fetch statuses for '{self.username}': {e}", exc_info=True)
+                
+                if is_blocked:
+                    logger.warning(f"🚫 IP appears to be BLOCKED (detected blocking indicators in error)")
+                    
+                    if self.proxy_config and attempt < max_retries:
+                        logger.info(f"🔄 RETRYING with new proxy IP (attempt {attempt + 1}/{max_retries})...")
+                        logger.info(f"   Forcing new session to get different IP")
+                        logger.info(f"{'='*80}")
+                        
+                        # Force a small delay before retry to allow IP rotation
+                        import time
+                        time.sleep(2)
+                        
+                        # Continue to next attempt
+                        continue
+                    else:
+                        if not self.proxy_config:
+                            logger.error(f"❌ IP blocked but proxy is not enabled - cannot retry with new IP")
+                        else:
+                            logger.error(f"❌ Max retries ({max_retries}) reached - all proxy IPs appear to be blocked")
+                        logger.error(f"{'='*80}")
+                        return
+                else:
+                    logger.warning(f"⚠️  Error does not appear to be IP blocking - not retrying")
+                    logger.error(f"{'='*80}")
+                    return
+        
+        if not request_succeeded:
+            logger.error(f"❌ Failed after {max_retries} attempts with different proxy IPs")
             return
 
         if not statuses:
