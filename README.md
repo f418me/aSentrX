@@ -138,6 +138,45 @@ The project uses Docker Hub for image distribution: `felixfreichur/asentrx:lates
     The application will start, and logs will be sent to the console and Logfire.
 
 
+## Truth Social Authentication
+
+aSentrX supports two authentication methods for Truth Social via the `truthbrush` library:
+
+### Method 1: Username & Password (OAuth Login)
+
+Set in your `.env`:
+```env
+TRUTHSOCIAL_USERNAME=your_username
+TRUTHSOCIAL_PASSWORD=your_password
+```
+
+This performs an OAuth token exchange at startup. **Note:** This method may be blocked by Cloudflare (HTTP 403), especially from non-US IP addresses or datacenter IPs.
+
+### Method 2: Bearer Token (Recommended)
+
+If the OAuth login is blocked, you can extract your session token directly from the browser and bypass the login flow entirely.
+
+**How to extract your `TRUTHSOCIAL_TOKEN`:**
+
+1. Open **https://truthsocial.com** in your browser (Chrome/Firefox/Edge) and **log in** to your account.
+2. Open **Developer Tools**:
+   - **Mac**: `Cmd + Option + I`
+   - **Windows/Linux**: `F12` or `Ctrl + Shift + I`
+3. Go to the **Application** tab (Chrome/Edge) or **Storage** tab (Firefox).
+4. In the left sidebar, expand **Local Storage** → click on **`https://truthsocial.com`**.
+5. Find the key **`truth:auth`** in the list.
+6. Click on the value — it contains a JSON object. Copy the value of the **`access_token`** field.
+7. Add the token to your `.env` file:
+
+```env
+TRUTHSOCIAL_TOKEN=your_access_token_here
+```
+
+> **Important:**
+> - When `TRUTHSOCIAL_TOKEN` is set, it takes priority over username/password — the OAuth login is skipped entirely.
+> - The token **can expire**. If you start getting HTTP 401 errors, extract a fresh token from your browser.
+> - You can verify your token works by running: `python experiments/diagnose_truth_auth.py --use-token`
+
 ## Logging
 
 *   **Standard Logging**: The application uses Python's `logging` module for console output, configured via `utils/logger_config.py`. The level is set by `LOG_LEVEL_CONSOLE` in `.env`.

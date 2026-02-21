@@ -20,6 +20,11 @@ SMS_NOTIFICATIONS_ENABLED = os.getenv("SMS_NOTIFICATIONS_ENABLED", "False").lowe
 
 TRADE_SYMBOL = os.getenv("TRADE_SYMBOL", "tBTCF0:USTF0")
 
+# --- TRUTHSOCIAL AUTH CONFIGURATION ---
+# If TRUTHSOCIAL_TOKEN is set, it will be used directly (skips OAuth login).
+# Extract from browser: DevTools → Application → Local Storage → truthsocial.com → key 'truth:auth' → access_token
+TRUTHSOCIAL_TOKEN = os.getenv("TRUTHSOCIAL_TOKEN", "").strip() or None
+
 # --- DECODO PROXY CONFIGURATION ---
 DECODO_PROXY_ENABLED = os.getenv("DECODO_PROXY_ENABLED", "False").lower() == "true"
 DECODO_PROXY_URL = os.getenv("DECODO_PROXY_URL", "")
@@ -146,6 +151,14 @@ class TrueSocial:
         # Store proxy config for later use
         self.proxy_config = proxy_config
         
+        # Log authentication mode
+        if TRUTHSOCIAL_TOKEN:
+            logger.info("🔑 Auth mode: TRUTHSOCIAL_TOKEN (Bearer token) — OAuth login will be skipped.")
+            logfire.info("Auth mode: TRUTHSOCIAL_TOKEN (Bearer token)")
+        else:
+            logger.info("🔑 Auth mode: Username/Password (OAuth login flow)")
+            logfire.info("Auth mode: Username/Password (OAuth login flow)")
+        
         # Initialize truthbrush Api with or without proxy
         self.api = None
         proxy_initialization_failed = False
@@ -157,7 +170,8 @@ class TrueSocial:
             
             try:
                 # Initialize Api and override _make_session to inject proxy
-                self.api = Api()
+                # Pass token explicitly so truthbrush skips OAuth login if token is available
+                self.api = Api(token=TRUTHSOCIAL_TOKEN)
 
                 # Create new _make_session that adds proxy configuration
                 def _make_session_with_proxy():
@@ -235,7 +249,7 @@ class TrueSocial:
                 logger.info("ℹ️  Initializing truthbrush Api without proxy (DECODO_PROXY_ENABLED=False)")
 
             try:
-                self.api = Api()
+                self.api = Api(token=TRUTHSOCIAL_TOKEN)
                 logger.info("✅ Successfully initialized Api with direct connection")
             except Exception as e:
                 error_message = f"CRITICAL: Failed to initialize truthbrush Api even without proxy: {e}"
