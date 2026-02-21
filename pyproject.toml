@@ -12,7 +12,7 @@ logfire = "3.16.0"
 logfire-api = "3.16.0"
 python-dotenv = "1.1.0"
 requests = "2.32.3"
-truthbrush = {git = "https://github.com/stanfordio/truthbrush.git", rev = "25f75b3187773420ca0ee28a0a1b8d24c4955326"}
+truthbrush = {git = "https://github.com/stanfordio/truthbrush.git", tag = "v0.2.5"}
 twilio = "9.6.1"
 bitfinex-api-py = {git = "https://github.com/f418me/bitfinex-api-py.git"}
 beautifulsoup4 = "4.13.4"

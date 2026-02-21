@@ -579,6 +579,7 @@ class TrueSocial:
             "captcha",
             "cloudflare",
             "security check",
+            "cannot authenticate",
         ]
         
         return any(indicator in error_str for indicator in blocking_indicators)
@@ -632,6 +633,31 @@ class TrueSocial:
                 request_succeeded = True
                 break
                 
+            except SystemExit as e:
+                # truthbrush raises SystemExit on auth failures (e.g. HTTP 403).
+                is_blocked = self._is_blocked_error(e)
+
+                logger.error(f"{'='*80}")
+                logger.error(
+                    f"❌ API REQUEST FAILED - truthbrush aborted during authentication for '{self.username}': {e}",
+                    exc_info=True
+                )
+
+                if is_blocked and self.proxy_config and attempt < max_retries:
+                    logger.warning("🚫 Authentication appears blocked; retrying with a new proxy IP/session")
+                    logger.info(f"🔄 RETRYING with new proxy IP (attempt {attempt + 1}/{max_retries})...")
+                    logger.info(f"{'='*80}")
+                    import time
+                    time.sleep(2)
+                    continue
+
+                if is_blocked:
+                    logger.error(f"❌ Max retries ({max_retries}) reached - authentication still blocked")
+                else:
+                    logger.error("❌ Authentication failed in truthbrush (SystemExit) and is not classified as blocking")
+                logger.error(f"{'='*80}")
+                return
+
             except Exception as e:
                 is_blocked = self._is_blocked_error(e)
                 
