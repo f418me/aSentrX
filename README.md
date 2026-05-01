@@ -9,7 +9,7 @@ aSentrX watches two signal sources simultaneously:
 1. **Donald Trump's Truth Social posts** — via WebSocket streaming
 2. **Federal Reserve FOMC press releases** — via periodic web scraping
 
-When a new signal arrives, an AI agent analyzes the content and predicts the likely impact on Bitcoin. If the confidence score clears a configurable threshold, a leveraged LIMIT order is placed on the Bitfinex perpetual futures market (`tBTCF0:USTF0`).
+When a new signal arrives, an AI agent analyzes the content and predicts the likely impact on Bitcoin. If the signal clears configurable confidence, novelty, and time-sensitivity gates, a leveraged LIMIT order is placed on the Bitfinex perpetual futures market (`tBTCF0:USTF0`).
 
 ## System Architecture
 
@@ -33,7 +33,7 @@ When a new signal arrives, an AI agent analyzes the content and predicts the lik
              │  ├─ "truthsocial" → SocialMedia Agent│
              │  └─ "web-monitor" → FED Decision Agent│
              │                                      │
-             │  Confidence gate → TradeDecisionManager
+             │  Confidence/novelty/time gate → TradeDecisionManager
              │  └─ Bitfinex LIMIT order             │
              │  └─ SMS alert (Twilio)               │
              │  └─ Logs (Logfire + Sentry)          │
@@ -74,9 +74,9 @@ Deployed on **Fly.io** (region: `arn` / Stockholm). Multiple instances can run i
 The central FastAPI service. Receives payloads from the monitors and routes them to the correct AI agent:
 
 - **FED Decision Agent** — compares the actual rate decision and FOMC narrative against predefined expectations (`app/expectations.json`) and predicts the Bitcoin impact (positive / negative / neutral).
-- **Social Media Agent** — two-stage pipeline: topic classification (market / bitcoin / tariffs / irrelevant) → price direction prediction.
+- **Social Media Agent** — strict Truth Social market-signal analysis. It returns structured fields such as `is_tradeable`, `event_type`, `asset`, `direction`, `confidence`, `novelty_score`, `time_sensitivity`, `risk_level`, and optional veto reasons.
 
-Both agents return structured pydantic-ai outputs. `TradeDecisionManager` checks the confidence score against per-source, per-topic thresholds and executes a LIMIT order on Bitfinex if the threshold is met. A `PROD_EXECUTION=False` flag enables dry-run mode.
+Both agents return structured pydantic-ai outputs. `TradeDecisionManager` checks per-source gates and executes a LIMIT order on Bitfinex only if the signal is actionable. A `PROD_EXECUTION=False` flag enables dry-run mode.
 
 Deployed on **Fly.io** (region: `lax` / Los Angeles).
 
@@ -145,9 +145,13 @@ Deployed on **Fly.io** (region: `fra` / Frankfurt).
 | `OPENAI_API_KEY` | Required when using an OpenAI model |
 | `BFX_API_KEY` / `BFX_API_SECRET` | Bitfinex API credentials |
 | `CONFIDENCE_THRESHOLD_FED_HIGH/MED` | Gates for FED signal trading |
-| `CONFIDENCE_THRESHOLD_BITCOIN_HIGH/MED` | Gates for social media signal trading |
+| `TS_CONFIDENCE_THRESHOLD_HIGH/MED` | Gates for broad-market Truth Social signal trading |
+| `TS_CONFIDENCE_THRESHOLD_BITCOIN_HIGH/MED` | Gates for direct BTC/crypto Truth Social signal trading |
+| `TS_MIN_NOVELTY_SCORE` | Minimum novelty required before a Truth Social signal can trade |
+| `TS_ALLOWED_TIME_SENSITIVITIES` | Allowed short-term timings, e.g. `immediate,same_day` |
 | `ORDER_AMOUNT_FED_*` / `LEVERAGE_FED_*` | FED trade sizes and leverage |
-| `ORDER_AMOUNT_BITCOIN_*` / `LEVERAGE_BITCOIN_*` | Social media trade sizes and leverage |
+| `TS_ORDER_AMOUNT_*` / `TS_LEVERAGE_*` | Broad-market Truth Social trade sizes and leverage |
+| `TS_ORDER_AMOUNT_BITCOIN_*` / `TS_LEVERAGE_BITCOIN_*` | Direct BTC/crypto Truth Social trade sizes and leverage |
 | `SMS_NOTIFICATIONS_ENABLED` | `True` to send Twilio SMS alerts |
 | `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` | Twilio credentials |
 | `LOGFIRE_TOKEN` / `SENTRY_DSN` | Observability (optional) |
@@ -183,7 +187,7 @@ poetry run uvicorn app.main:app --reload
 cd asentrx-truthsocial-monitor
 npm install
 npm run auth            # extracts and writes ACCESS_TOKEN to .env
-echo "TRADE_ENGINE_URL=http://localhost:8000" >> .env
+echo "TRADE_ENGINE_URL=https://asentrx-trade-decision-engine.fly.dev" >> .env
 npm start
 ```
 
@@ -247,3 +251,4 @@ Secrets (API keys, tokens) are set via `fly secrets set KEY=value` and are not s
 - **`PROD_EXECUTION=False` by default.** Set to `True` explicitly in the trade engine to enable live order placement.
 - **Deduplication is in-memory.** Restarting the trade engine clears the processed content ID set. This is acceptable since Truth Social posts use unique IDs and FED articles use unique URLs.
 - **`app/expectations.json`** must be present and up to date for the FED Decision Agent to function. It defines what rate decision and narrative was expected before an FOMC meeting.
+- **Truth Social signals are intentionally conservative.** Repeated slogans, low-novelty posts, slow catalysts, and neutral/no-asset signals are logged with veto reasons and do not trade automatically.
