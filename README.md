@@ -55,7 +55,7 @@ Connects to Truth Social's Mastodon-compatible WebSocket streaming API and filte
 
 Runs **locally** (Node.js). OAuth tokens are extracted from a running Chrome instance and expire periodically.
 
-→ [Repository](https://github.com/f418me/asentrx-truthsocial-monitor)
+→ Repository not publicly available for compliance reasons.
 
 ---
 
