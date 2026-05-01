@@ -11,6 +11,8 @@ aSentrX watches two signal sources simultaneously:
 
 When a new signal arrives, an AI agent analyzes the content and predicts the likely impact on Bitcoin. If the signal clears configurable confidence, novelty, and time-sensitivity gates, a leveraged LIMIT order is placed on the Bitfinex perpetual futures market (`tBTCF0:USTF0`).
 
+Monitor-to-engine notifications are protected by a shared bearer token. Both monitors send `Authorization: Bearer <token>`, and the trade-decision-engine rejects unauthenticated `/notify/...` requests before analysis or trade logic runs.
+
 ## System Architecture
 
 ```
@@ -126,6 +128,7 @@ Deployed on **Fly.io** (region: `fra` / Frankfurt).
 |---|---|---|
 | `ACCESS_TOKEN` | Yes | OAuth token — extracted via `npm run auth` |
 | `TRADE_ENGINE_URL` | Yes | e.g. `https://asentrx-trade-decision-engine.fly.dev` |
+| `TRADE_ENGINE_AUTH_TOKEN` | Yes | Bearer token shared with the trade engine's `NOTIFY_AUTH_TOKEN` |
 | `WEBHOOK_URL` | No | Additional webhook endpoint |
 
 ### asentrx-web-monitor (`.env` / Fly secrets)
@@ -133,6 +136,7 @@ Deployed on **Fly.io** (region: `fra` / Frankfurt).
 | Variable | Description |
 |---|---|
 | `WEBSERVICE_URL` | Full URL of the trade engine endpoint |
+| `TRADE_ENGINE_AUTH_TOKEN` | Bearer token shared with the trade engine's `NOTIFY_AUTH_TOKEN` |
 | `MONITOR_MODE` | `production` (randomized interval) or `normal` |
 | `MONITOR_BOOTSTRAP_SKIP_EXISTING` | `true` to skip replay on cold start |
 
@@ -141,6 +145,7 @@ Deployed on **Fly.io** (region: `fra` / Frankfurt).
 | Variable | Description |
 |---|---|
 | `PROD_EXECUTION` | `True` for live trading, `False` for dry-run |
+| `NOTIFY_AUTH_TOKEN` | Shared bearer token required by `/notify/web-monitor` and `/notify/truth-social` |
 | `MODEL` | LLM model string, e.g. `openai:gpt-5.4` |
 | `OPENAI_API_KEY` | Required when using an OpenAI model |
 | `BFX_API_KEY` / `BFX_API_SECRET` | Bitfinex API credentials |
@@ -204,6 +209,7 @@ WEBSERVICE_URL=http://localhost:8000/notify/web-monitor python main.py
 # Simulate a Truth Social post
 curl -X POST http://localhost:8000/notify/truth-social \
   -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <NOTIFY_AUTH_TOKEN>' \
   -d '{
     "type": "truthsocial",
     "url": "https://truthsocial.com/@realDonaldTrump/1",
@@ -216,6 +222,7 @@ curl -X POST http://localhost:8000/notify/truth-social \
 # Simulate an FOMC announcement
 curl -X POST http://localhost:8000/notify/web-monitor \
   -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <NOTIFY_AUTH_TOKEN>' \
   -d '{
     "type": "web-monitor",
     "url": "https://www.federalreserve.gov/newsevents/pressreleases/monetary20260101a.htm",
